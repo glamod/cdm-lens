@@ -13,7 +13,7 @@ from io import BytesIO
 from django.views.generic import View
 from django.http import HttpResponse
 
-from cdm_interface.utils import fetch_data
+from cdm_interface.utils import fetch_data, format_data, get_output_format
 
 
 CODE_TABLES = [
@@ -44,35 +44,49 @@ class LayerView(View):
             count=self.request.GET.get('count')
         )
 
+        output_format = get_output_format(request.GET.get('format'))
+
         compress = json.loads(request.GET.get('compress', 'false'))
         if compress:
 
             file_like_object = BytesIO()
             zipfile_ob = zipfile.ZipFile(file_like_object, 'w')
-            zipfile_ob.writestr('results.json', data.to_json(orient='records'))
+            data = format_data(data, output_format.output_method)
+            zipfile_ob.writestr(f'results.{output_format.file_extension}', data)
 
             for code_table in CODE_TABLES:
-                code_table_data = fetch_data(code_table)
-                code_table_json = code_table_data.to_json(orient='records')
 
-                zipfile_ob.writestr(f'codetables/{code_table}.json', code_table_json)
+                code_table_data = format_data(
+                    fetch_data(code_table), output_format.output_method
+                )
 
-            return HttpResponse(
+                zipfile_ob.writestr(
+                    f'codetables/{code_table}.{output_format.file_extension}',
+                    code_table_data
+                )
+
+            response = HttpResponse(
                 file_like_object.getvalue(),
                 content_type='application/x-zip-compressed'
             )
+            response_file_name = 'results.zip'
 
         else:
 
-            return HttpResponse(
-                data.to_json(orient='records'),
-                content_type='application/json'
+            response = HttpResponse(
+                format_data(data, output_format.output_method),
+                content_type=output_format.content_type
             )
+            response_file_name = f'results.{output_format.file_extension}'
+
+        content_disposition = f'attachment; filename="{response_file_name}"'
+        response['Content-Disposition'] = content_disposition
+        return response
 
 
 class LiteRecordView(LayerView):
     layer_name = 'source_configuration'
-    index_field = 'id'
+    index_field = 'source_id'
 
 
 class ReportTypeView(LayerView):

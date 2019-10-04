@@ -15,7 +15,7 @@ urlpatterns = [
 
     path('records/',
         interface_views.LiteRecordView.as_view()),
-    path('records/<int:index>/',
+    path('records/<slug:index>/',
         interface_views.LiteRecordView.as_view()),
 
     # Code tables:
