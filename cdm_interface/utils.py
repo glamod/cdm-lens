@@ -8,6 +8,8 @@ __license__ = "BSD - see LICENSE file in top-level directory"
 
 import json
 import requests
+import io
+import csv
 
 from collections import namedtuple
 from django.conf import settings
@@ -16,21 +18,21 @@ from pandas import DataFrame
 
 
 OutputFormat = namedtuple('OutputFormat', [
-    'output_method', 'content_type', 'file_extension'
+    'fetch_key', 'output_method', 'content_type', 'file_extension'
 ])
 OUTPUT_FORMAT_MAP = {
-    'csv': OutputFormat('to_csv', 'application/csv', 'csv'),
-    'json': OutputFormat('to_json', 'application/json', 'json'),
+    'csv': OutputFormat('csv', 'to_csv', 'text/csv', 'csv'),
+    'json': OutputFormat('json', 'to_json', 'application/json', 'json'),
 }
 
 
-def fetch_data(layer_name, index_field=None, index=None, count=None):
-    
+def fetch_data(layer_name, index_field=None, index=None, count=None, format_key='csv'):
+
     query = furl(settings.WFS_URL)
 
     query.args['request'] = 'GetFeature'
     query.args['typename'] = layer_name
-    query.args['outputFormat'] = 'json'
+    query.args['outputFormat'] = format_key
 
     if index is not None:
         query.args['cql_filter'] = f'{index_field}={index}'
@@ -39,9 +41,26 @@ def fetch_data(layer_name, index_field=None, index=None, count=None):
         query.args['count'] = count
 
     result = requests.get(query.url)
-    data = json.loads(result.text)
 
-    return DataFrame.from_records(data['features'], index='id')
+    if format_key == 'json':
+
+        data = json.loads(result.text)
+        data = DataFrame.from_records(data['features'], index='id')
+
+    else:
+
+        reader = csv.DictReader(io.StringIO(result.text))
+        data = []
+        for row in reader:
+
+            # Remove FID column
+            row.pop('FID')
+
+            data.append(dict(row))
+
+        data = DataFrame.from_records(data, index=index_field)
+
+    return data
 
 
 def get_output_format(format_name=None):
