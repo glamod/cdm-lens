@@ -75,7 +75,7 @@ class LayerView(View):
                 file_like_object.getvalue(),
                 content_type='application/x-zip-compressed'
             )
-            response_file_name = 'results.zip'
+            response_file_name = f'{self.layer_name}.zip'
 
         else:
 
@@ -83,7 +83,8 @@ class LayerView(View):
                 format_data(data, output_format.output_method),
                 content_type=output_format.content_type
             )
-            response_file_name = f'results.{output_format.file_extension}'
+            response_file_name = \
+                f'{self.layer_name}.{output_format.file_extension}'
 
         content_disposition = f'attachment; filename="{response_file_name}"'
         response['Content-Disposition'] = content_disposition
