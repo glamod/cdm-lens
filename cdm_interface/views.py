@@ -92,8 +92,8 @@ class LayerView(View):
 
 
 class LiteRecordView(LayerView):
-    layer_name = 'source_configuration'
-    index_field = 'source_id'
+    layer_name = 'observations'
+    index_field = 'observation_id'
 
 
 class ReportTypeView(LayerView):
