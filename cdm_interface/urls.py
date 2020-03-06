@@ -13,6 +13,8 @@ from cdm_interface import views as interface_views
 
 urlpatterns = [
 
+    path('wfs/', interface_views.RawWFSView.as_view()),
+
     path('records/',
         interface_views.LiteRecordView.as_view()),
     path('records/<slug:index>/',

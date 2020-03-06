@@ -11,71 +11,79 @@ import requests
 import io
 import csv
 
-from collections import namedtuple
 from django.conf import settings
 from furl import furl
 from pandas import DataFrame
 
 
-OutputFormat = namedtuple('OutputFormat', [
-    'fetch_key', 'output_method', 'content_type', 'file_extension'
-])
-OUTPUT_FORMAT_MAP = {
-    'csv': OutputFormat('csv', 'to_csv', 'text/csv', 'csv'),
-    'json': OutputFormat('json', 'to_json', 'application/json', 'json'),
-}
+class WFSQuery:
+
+    def __init__(self, **kwargs):
+
+        self._wfs_url = settings.WFS_URL
+        self._query_dict = kwargs
+
+    def fetch_data(self):
+
+        query = furl(self._wfs_url)
+
+        for key, value in self._query_dict.items():
+            query.args[key] = value
+
+        result = requests.get(query)
+        return result.text
 
 
-def fetch_data(layer_name, index_field=None, index=None, count=None, format_key='csv'):
+class LayerQuery(WFSQuery):
 
-    query = furl(settings.WFS_URL)
+    def __init__(self, layer_name, index_field=None, index=None, count=None, data_format='csv'):
 
-    query.args['request'] = 'GetFeature'
-    query.args['typename'] = layer_name
-    query.args['outputFormat'] = format_key
+        self._index_field = index_field
+        self._data_format = data_format
 
-    if index is not None:
-        query.args['cql_filter'] = f'{index_field}={index}'
+        query_dict = {
+            "request": "GetFeature",
+            "typename": layer_name,
+            "outputFormat": data_format,
+        }
 
-    if count:
-        query.args['count'] = count
+        if index is not None:
+            query_dict['cql_filter'] = f'{index_field}={index}'
 
-    result = requests.get(query.url)
+        if count:
+            query_dict['count'] = count
 
-    if format_key == 'json':
+        super().__init__(**query_dict)
 
-        data = json.loads(result.text)
-        data = DataFrame.from_records(data['features'], index='id')
+    def fetch_data(self, output_method=None):
 
-    else:
+        raw_data = super().fetch_data()
 
-        reader = csv.DictReader(io.StringIO(result.text))
-        data = []
-        for row in reader:
+        if self._data_format == 'json':
 
-            # Remove FID column
-            row.pop('FID')
+            data = json.loads(raw_data)
+            data = DataFrame.from_records(data['features'], index='id')
 
-            data.append(dict(row))
+        else:
 
-        data = DataFrame.from_records(data, index=index_field)
+            reader = csv.DictReader(io.StringIO(raw_data))
+            data = []
+            for row in reader:
 
-    return data
+                # Remove FID column
+                row.pop('FID')
 
+                data.append(dict(row))
 
-def get_output_format(format_name=None):
+            data = DataFrame.from_records(data, index=self._index_field)
 
-    if format_name not in OUTPUT_FORMAT_MAP:
-        format_name = 'csv'
+        if output_method:
 
-    return OUTPUT_FORMAT_MAP[format_name]
+            kwargs = {}
+            if output_method == 'to_json':
+                kwargs['orient'] = 'records'
 
+            return getattr(data, output_method)(**kwargs)
 
-def format_data(data_frame, output_method='to_csv'):
-
-    kwargs = {}
-
-    if output_method == 'to_json':
-        kwargs['orient'] = 'records'
-
-    return getattr(data_frame, output_method)(**kwargs)
+        else:
+            return data
