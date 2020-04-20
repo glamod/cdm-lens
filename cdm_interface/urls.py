@@ -15,10 +15,10 @@ urlpatterns = [
 
     path('wfs/', interface_views.RawWFSView.as_view()),
 
-    path('records/',
-        interface_views.LiteRecordView.as_view()),
-    path('records/<slug:index>/',
-        interface_views.LiteRecordView.as_view()),
+#    path('records/',
+#        interface_views.LiteRecordView.as_view()),
+#    path('records/<slug:index>/',
+#        interface_views.LiteRecordView.as_view()),
 
     # Code tables:
 

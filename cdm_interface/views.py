@@ -6,6 +6,7 @@ __copyright__ = "Copyright 2019 United Kingdom Research and Innovation"
 __license__ = "BSD - see LICENSE file in top-level directory"
 
 
+import re
 import json
 import zipfile
 
@@ -14,7 +15,17 @@ from collections import namedtuple
 from django.views.generic import View
 from django.http import HttpResponse
 
-from cdm_interface.utils import LayerQuery, WFSQuery
+import io
+
+import pandas as pd
+
+from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
+from cdm_interface.wfs_mappings import wfs_mappings
+
+
+import logging
+logging.basicConfig()
+log = logging.getLogger(__name__)
 
 
 class QueryView(View):
@@ -26,7 +37,7 @@ class QueryView(View):
         "csv": OutputFormat("csv", "to_csv", "text/csv", "csv"),
         "json": OutputFormat("json", "to_json", "application/json", "json"),
     }
-    DEFAULT_OUTPUT_FORMAT = "json"
+    DEFAULT_OUTPUT_FORMAT = "csv"
     DEFAULT_COMPRESS_VALUE = "true"
 
     CODE_TABLES = [
@@ -67,6 +78,22 @@ class QueryView(View):
 
         compress = json.loads(
             self.request.GET.get("compress", self.DEFAULT_COMPRESS_VALUE))
+
+        mappers = _get_mappers()
+
+        # Manage the data to remove excess WFS padding in JSON/CSV
+        if self.output_format.extension == 'json':
+            data = extract_json_records(data)
+            data = json.dumps(data)
+
+        if self.output_format.extension == 'csv':
+            data = extract_csv_records(data, mappers=mappers)
+            data = data.to_csv(index=False)
+
+#        with open('/tmp/aaa', 'w', encoding='utf-8') as writer:
+#            writer.write(f'FORMAT: {self.output_format.extension}\n{type(data)}\n')
+#            writer.write(f'{data}')
+
         if compress:
 
             content_type = "application/x-zip-compressed"
@@ -111,14 +138,157 @@ class QueryView(View):
         return file_like_object.getvalue()
 
 
+mapper_data = {
+    'report_type': ['type', 'abbreviation'],
+    'meaning_of_time_stamp': ['meaning', 'name'],
+    'observed_variable': ['variable', 'name'],
+    'units': ['units', 'abbreviation'],
+    'observation_value_significance': ['significance', 'description'], 
+    'duration': ['duration', 'description'],
+    'platform_type': ['type', 'description'],
+    'station_type': ['type', 'description'],
+    'quality_flag': ['flag', 'description'],
+    'data_policy_licence': ['policy', 'name']
+}
+
+
+def _get_mappers():
+    mappers = []
+    SUPPORTED_MAPPERS = mapper_data.keys()
+
+    for code_table, code_table_index_field in QueryView.CODE_TABLES:
+        if code_table not in SUPPORTED_MAPPERS: continue
+
+        mapper = _get_mapper(code_table, code_table_index_field)
+        mappers.append((code_table, mapper))
+
+    return mappers
+ 
+
+def _get_mapper(code_table, code_table_index_field):
+    # Download a code table and convert it to, and return a dictionary
+    query = LayerQuery(
+        code_table,
+        index_field=code_table_index_field,
+        data_format='csv')
+
+    code_table_data = query.fetch_data('to_csv')
+
+#    with open('/tmp/csv.csv', 'w', encoding='utf-8') as writer:
+#        writer.write(f'{code_table_data}') 
+ 
+    df = pd.read_csv(io.StringIO(code_table_data))
+    mapper = {}
+    in_map, out_map = mapper_data[code_table]
+
+    for i, rec in df.iterrows():
+       
+#        log.warn(f'record: {rec}')
+        mapper[str(rec[in_map])] = rec[out_map]
+
+    return mapper
+    
+
 class RawWFSView(QueryView):
 
     def get(self, request):
 
-        query = WFSQuery(**request.GET)
+        log.warn(f'QUERY STRING: {request.GET}')
+
+        rg = request.GET.copy()
+        log.warn(f'COPIED QUERY STRING: {rg}')
+
+        if rg.get('cql_filter'):
+            rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
+
+        log.warn(f'FIXED QUERY STRING: {rg}')
+
+        query = WFSQuery(**rg)
         data = query.fetch_data()
 
         return self._build_response(data)
+
+
+    def _map_cql_filter(self, cql): 
+        # NOTE: domain is MANUALLY mapped in strings because simpler than integrating into wfs_mappings
+        #
+        # E.G.: 'cql_filter': ['date_time DURING 1999-06-01T00:00:00Z/1999-06-01T23:59:59Z AND observed_variable IN (44,85) AND report_type=3 AND platform_type NOT IN (2,5) AND quality_flag=0 AND data_policy_licence=non_commercial']
+        to_map = wfs_mappings.keys()
+        to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
+        cql=cql + ' '
+#        comps = cql.split()
+        
+        r0 = '^(?P<start>.*)'
+        r1 = '(?P<end>.*)$'
+
+        for key in to_map:
+
+            mapper = wfs_mappings[key]
+            target_field = mapper['target']
+
+            res = []
+            
+#            re.match('^(?P<start>.*)(?P<found>x in y)(?P<end>.*)$', 'hello x in y').groupdict()
+            regex = f'{r0}(?P<found>{key}=)(?P<value>[^ ]+)\s*{r1}'
+            log.warn(f'regex: {regex}')
+            m1 = re.match(regex, cql)
+
+            if m1:
+                d = m1.groupdict()
+                mapped_value = mapper['fields'][d['value']]
+                value = f'{target_field}={mapped_value}'
+                cql = d['start'] + value + ' ' + d['end'].strip()
+                log.warn(f'UPDATE TO cql: {cql}')
+
+            regex = f'{r0}(?P<found>{key} IN )(?P<value>[^ ]+)\s*{r1}'
+            log.warn(f'regex: {regex}')
+            m1 = re.match(regex, cql)
+
+            if m1:
+                d = m1.groupdict()
+                items = d['value'].split('(')[1][:-1].split(',')
+                mapped_value = ','.join([mapper['fields'][_] for _ in items])
+                value = f'{target_field} IN ({mapped_value})'
+                cql = d['start'] + value + ' ' + d['end'].strip()
+                log.warn(f'UPDATE TO cql: {cql}')
+
+        regex = f'{r0}(?P<found>domain=)(?P<value>[^ ]+)\s*{r1}'
+        log.warn(f'regex: {regex}')
+        m1 = re.match(regex, cql)
+
+        if m1:
+            d = m1.groupdict()
+            if d['value'] == 'land':
+                mapped_value = 'platform_type NOT IN (2,5)'
+            elif d['value'] == 'marine':
+                mapped_value = 'platform_type IN (2,5)'
+                
+            value = mapped_value
+            cql = d['start'] + value + ' ' + d['end'].strip()
+            log.warn(f'UPDATE TO cql: {cql}')
+
+ 
+        for comp in []: #comps:
+                value = comp
+
+                if value.startswith(f'{key}='):
+                    mapped_value = mapper['fields'][value.split('=')[1]]
+                    log.warn(f'{value} --> {target_field}={mapped_value}')
+                    res.append(f'{target_field}={mapped_value}')
+                elif value.startswith(f'{key} IN ('):
+                    items = value.split('(')[1][:-1].split(',')
+                    mapped_value = ','.join([mapper['fields'][_] for _ in items])
+                    res.append(f'{target_field}={mapped_value}')
+                elif value == 'domain=land':
+                    res.append('platform_type NOT IN (2,5)')
+                elif value == 'domain=marine':
+                    res.append('platform_type IN (2,5)') 
+                else:
+                    res.append(value)
+
+#            comps = res[:]
+
+        return cql.strip()
 
 
 class LayerView(QueryView):
@@ -166,7 +336,6 @@ class MeaningOfTimeStampView(LayerView):
 class ObservedVariableView(LayerView):
     layer_name = "observed_variable"
     index_field = "variable"
-
 
 class UnitsView(LayerView):
     layer_name = "units"

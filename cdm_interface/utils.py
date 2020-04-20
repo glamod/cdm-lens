@@ -15,6 +15,11 @@ from django.conf import settings
 from furl import furl
 from pandas import DataFrame
 
+import logging
+logging.basicConfig()
+log = logging.getLogger(__name__)
+
+
 
 class WFSQuery:
 
@@ -55,35 +60,81 @@ class LayerQuery(WFSQuery):
 
         super().__init__(**query_dict)
 
+
     def fetch_data(self, output_method=None):
 
         raw_data = super().fetch_data()
 
         if self._data_format == 'json':
 
+            # Convert the returned data into a DataFrame
             data = json.loads(raw_data)
-            data = DataFrame.from_records(data['features'], index='id')
+            data = extract_json_records(data)
+#            data = DataFrame.from_records(data['features'], index='id')
+            data = DataFrame.from_records(data)
 
         else:
 
-            reader = csv.DictReader(io.StringIO(raw_data))
-            data = []
-            for row in reader:
-
-                # Remove FID column
-                row.pop('FID')
-
-                data.append(dict(row))
-
-            data = DataFrame.from_records(data, index=self._index_field)
+            data = extract_csv_records(raw_data, index_field=self._index_field)
+        # Write to CSV
+#        data.to_csv('/tmp/output.csv')
 
         if output_method:
 
             kwargs = {}
             if output_method == 'to_json':
+
+                # Convert the data from to JSON
                 kwargs['orient'] = 'records'
 
             return getattr(data, output_method)(**kwargs)
 
         else:
             return data
+
+
+def extract_json_records(data):
+#    with open('/tmp/in.json', 'w', encoding='utf-8') as writer:
+#        writer.write(f'TYPE: {type(data)}\n\n{data}')
+
+    # Extracts real records from complex data structure
+    if type(data) is str: 
+        data = json.loads(data)
+
+    if type(data) is dict and 'features' in data:
+        data = data['features']
+
+    if type(data) is list and len(data) > 0 and 'properties' in data[0]:
+        data = [_['properties'] for _ in data]
+
+    return data
+
+
+def extract_csv_records(input_data, index_field=None, mappers=None):
+
+    # Convert the CSV file to a DataFrame
+    if type(input_data) is str:
+        input_data = csv.DictReader(io.StringIO(input_data))
+
+    data = []
+    FID = 'FID'
+
+    log.warn(f'mappers: {mappers}')
+
+    for row in input_data:
+        # Remove FID column
+        if FID in row: 
+            row.pop(FID)
+
+#        log.warn(f'Row: {row}')
+        if mappers:
+            for field, mapper in mappers:
+                if field in row:
+                    #log.warn(f'Row field: {row[field]}')
+                    row[field] = mapper.get(row[field], '')
+
+        data.append(dict(row))
+
+    data = DataFrame.from_records(data, index=index_field)
+    return data
+
