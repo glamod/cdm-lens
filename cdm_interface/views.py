@@ -21,12 +21,202 @@ import pandas as pd
 
 from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
 from cdm_interface.wfs_mappings import wfs_mappings
-
+from cdm_interface._loader import local_conn_str
 
 import logging
 logging.basicConfig()
 log = logging.getLogger(__name__)
 
+
+
+
+class SelectView(View):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        #self._output_format = None
+
+    @property
+    def response_file_name(self):
+        return "results"
+
+    @property
+    def output_format(self):
+        return "csv"
+
+    def get(self, request):
+        log.warn(f'QUERY STRING: {request.GET}')
+
+#        log.warn(f'COPIED QUERY STRING: {rg}')
+
+        # if rg.get('cql_filter'):
+        #     rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
+        # query = WFSQuery(**rg)
+        # data = query.fetch_data()
+        if 1:#try:
+            qm = QueryManager()
+            data = qm.run_query(request.GET.dict())
+        else:#except KeyError as exc:
+            return HttpResponse(f'Exception raised when running query: {str(exc)}')
+
+        log.warn(f'LENGTH: {len(data)}')
+        return self._build_response(data)
+
+    def _build_response(self, data):
+        mappers = _get_mappers()
+
+#        data = extract_csv_records(data, mappers=mappers)
+        data = data.to_csv(index=False)
+
+        content_type = "application/x-zip-compressed"
+        response_file_name = f"{self.response_file_name}.zip"
+
+        data = self._compress_data(data)
+
+        response = HttpResponse(data, content_type=content_type)
+        content_disposition = f"attachment; filename=\"{response_file_name}\""
+        response["Content-Disposition"] = content_disposition
+
+        return response
+
+    def _compress_data(self, data):
+
+        file_like_object = BytesIO()
+        zipfile_ob = zipfile.ZipFile(file_like_object, "w")
+        zipfile_ob.writestr(f"{self.response_file_name}.{self.output_format}", data)
+        
+        return file_like_object.getvalue()
+
+
+
+import os
+import pandas
+import psycopg2
+
+# noinspection SqlDialectInspection
+class QueryManager(object):
+
+    def __init__(self, conn_str=local_conn_str):
+        self._conn = psycopg2.connect(conn_str)
+
+    def run_query(self, kwargs):
+        log.warn(f'kwargs: {kwargs}')
+        self._validate_request(kwargs)        
+
+        dfs = []
+
+        for sql_query in self._generate_queries(kwargs):
+            log.warn(f'RUNNING SQL: {sql_query}')
+            df = pandas.read_sql(sql_query, self._conn)
+            dfs.append(df)
+
+        if len(dfs) == 1:
+            df = dfs[0]
+        else:
+            df = pandas.concat(dfs)
+
+#        sql_query = self._parse_args(kwargs)
+
+        if kwargs.get('column_selection', None) == 'basic_metadata':
+            columns = ['observation_id', 'date_time', 'observation_duration', 'longitude',
+                                     'latitude', 'height_above_surface', 'observed_variable', 'units',
+                                     'observation_value', 'value_significance', 'primary_station_id',
+                                     'station_name', 'quality_flag']
+            df = df[columns]
+
+        else:
+            df = df.drop(columns=['location'])
+
+        # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',
+        #           date_format='%Y-%m-%d %H:%M:%S%z')
+        return df
+
+
+    def _validate_request(self, kwargs):
+        required = ['domain', 'frequency', 'variable', 'bbox', 'year']
+        for param in required:
+            if param not in kwargs:
+                raise KeyError(f'Input {param} must be provided.')
+
+#        return dict([(key, value[0]) for key, value in kwargs.items()])
+
+    def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
+        return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
+
+    def _generate_queries(self, kwargs):
+        # Query the database and obtain data as Python objects
+#        query = "SELECT * FROM lite.observations WHERE date_time < '1763-01-01';"
+#        query = "SELECT * FROM lite.observations_1763_land_2 WHERE date_time < '1763-01-01';"
+        d = {}
+        d['domain'] = kwargs['domain']
+
+        d['report_type'] = self._map_value(kwargs['frequency'],
+                                wfs_mappings['frequency']['fields'])
+
+        if 'bbox' in kwargs:
+            bbox = [float(_) for _ in kwargs['bbox'].split(',')]
+        else:
+            bbox = (-1, 50, 10, 60)
+        d['linestring'] = self._bbox_to_linestring(*bbox)
+
+        d['observed_variable'] = self._map_value(kwargs['variable'],
+                                     wfs_mappings['variable']['fields'],
+                                     as_list=True)
+
+        d['data_policy_licence'] = self._map_value(kwargs['intended_use'],
+                                     wfs_mappings['intended_use']['fields'])
+
+        d['quality_flag'] = self._map_value(kwargs['data_quality'],
+                                     wfs_mappings['data_quality']['fields'])
+
+        d['year'] = kwargs['year']
+        d['month'] = kwargs['month']
+
+        # NEED COLUMNS FOR SELECTION!!!!
+        tmpl = ("SELECT * FROM lite.observations_{year}_{domain}_{report_type} WHERE "
+                "observed_variable IN {observed_variable} AND "
+                "data_policy_licence = {data_policy_licence} AND "
+                "quality_flag = {quality_flag} AND "
+                "ST_Intersects({linestring}, location) AND ")
+
+        if kwargs['frequency'] == 'monthly':
+            time_query = "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
+            yield (tmpl + time_query).format(**d)
+
+        elif kwargs['frequency'] == 'daily':
+            for day in kwargs['day'].split(','):
+                d['day'] = day
+                time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
+                yield (tmpl + time_query).format(**d)
+                
+        elif kwargs['frequency'] == 'sub-daily':
+            for day in kwargs['day'].split(','):
+                d['day'] = day
+                for hour in kwargs['hour'].split(','):
+                    d['hour'] = hour 
+                    time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
+                    yield (tmpl + time_query).format(**d)
+
+
+    def OLD(self):
+#        to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
+        OLD_query = ("SELECT {columns} FROM lite.observations_{year}_{domain}_{report_type} WHERE " 
+                "date_time BETWEEN '{year}-{month}-{day}' AND '{year}-{month}-28' AND " 
+                "observed_variable IN {observed_variable} AND " 
+                "data_policy_licence = {data_policy_licence} AND "
+                "quality_flag = {quality_flag} AND "
+                "ST_Intersects({linestring}, location);") #.format(**d)
+
+#        log.warn(f'QUERY: {query}')
+#        return query
+
+
+    def _map_value(self, value, mapper, as_list=False):
+        if ',' in value or as_list:
+            return '(' + ','.join([mapper[_] for _ in value.split(',')]) + ')'
+        else:
+            return mapper[value] 
+ 
 
 class QueryView(View):
 
@@ -90,16 +280,12 @@ class QueryView(View):
             data = extract_csv_records(data, mappers=mappers)
             data = data.to_csv(index=False)
 
-#        with open('/tmp/aaa', 'w', encoding='utf-8') as writer:
-#            writer.write(f'FORMAT: {self.output_format.extension}\n{type(data)}\n')
-#            writer.write(f'{data}')
-
         if compress:
 
             content_type = "application/x-zip-compressed"
             response_file_name = f"{self.response_file_name}.zip"
 
-            data = self._compress_data(data, include_code_tables=True)
+            data = self._compress_data(data, include_code_tables=False)
 
         else:
 
@@ -212,7 +398,9 @@ class RawWFSView(QueryView):
     def _map_cql_filter(self, cql): 
         # NOTE: domain is MANUALLY mapped in strings because simpler than integrating into wfs_mappings
         #
-        # E.G.: 'cql_filter': ['date_time DURING 1999-06-01T00:00:00Z/1999-06-01T23:59:59Z AND observed_variable IN (44,85) AND report_type=3 AND platform_type NOT IN (2,5) AND quality_flag=0 AND data_policy_licence=non_commercial']
+        # E.G.: 'cql_filter': ['date_time DURING 1999-06-01T00:00:00Z/1999-06-01T23:59:59Z AND 
+        #     observed_variable IN (44,85) AND report_type=3 AND platform_type NOT IN (2,5) AND 
+        #     quality_flag=0 AND data_policy_licence=non_commercial']
         to_map = wfs_mappings.keys()
         to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
         cql=cql + ' '

@@ -13,6 +13,7 @@ from cdm_interface import views as interface_views
 
 urlpatterns = [
 
+    path('select/', interface_views.SelectView.as_view()),
     path('wfs/', interface_views.RawWFSView.as_view()),
 
 #    path('records/',

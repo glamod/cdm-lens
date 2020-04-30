@@ -47,16 +47,18 @@ wfs_mappings = {
             "quality_controlled": "0",
             "all_data": "1"
         },
+        "labels": '__standard__'
     },
     "column_selection": {
         "fields": {
             "basic_metadata": "basic_metadata",
             "detailed_metadata": "detailed_metadata"
-        }
+        },
+        "labels": '__standard__'
     },
     "year": {
         "fields": {
-            "__auto__": [str(_) for _ in range(1761, 2019)]
+            "__auto__": [str(_) for _ in range(1763, 2019)]
         }
     },
     "month": {

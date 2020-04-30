@@ -117,14 +117,16 @@ def extract_csv_records(input_data, index_field=None, mappers=None):
         input_data = csv.DictReader(io.StringIO(input_data))
 
     data = []
-    FID = 'FID'
+    to_remove = ['FID', 'location']
 
     log.warn(f'mappers: {mappers}')
 
     for row in input_data:
         # Remove FID column
-        if FID in row: 
-            row.pop(FID)
+
+        for field in to_remove:
+            if field in row: 
+                row.pop(field)
 
 #        log.warn(f'Row: {row}')
         if mappers:
