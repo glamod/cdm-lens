@@ -110,6 +110,7 @@ def extract_json_records(data):
     return data
 
 
+
 def extract_csv_records(input_data, index_field=None, mappers=None):
 
     # Convert the CSV file to a DataFrame

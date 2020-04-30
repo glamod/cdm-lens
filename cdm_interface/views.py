@@ -48,11 +48,11 @@ class SelectView(View):
         log.warn(f'QUERY STRING: {request.GET}')
 
 #        log.warn(f'COPIED QUERY STRING: {rg}')
-
         # if rg.get('cql_filter'):
         #     rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
         # query = WFSQuery(**rg)
         # data = query.fetch_data()
+
         if 1:#try:
             qm = QueryManager()
             data = qm.run_query(request.GET.dict())
@@ -63,9 +63,6 @@ class SelectView(View):
         return self._build_response(data)
 
     def _build_response(self, data):
-        mappers = _get_mappers()
-
-#        data = extract_csv_records(data, mappers=mappers)
         data = data.to_csv(index=False)
 
         content_type = "application/x-zip-compressed"
@@ -127,10 +124,20 @@ class QueryManager(object):
         else:
             df = df.drop(columns=['location'])
 
+        self._map_values(df)
         # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',
         #           date_format='%Y-%m-%d %H:%M:%S%z')
         return df
 
+
+    def _map_values(self, df):
+        mappers = _get_mappers()
+        found_cols = [_ for _ in df.columns]
+
+        for col, mapper in mappers:
+            if col in found_cols: 
+                log.warn(f'Mapping: {col}, with {mapper}')
+                df[col].replace(mapper, inplace=True)
 
     def _validate_request(self, kwargs):
         required = ['domain', 'frequency', 'variable', 'bbox', 'year']
@@ -338,6 +345,8 @@ mapper_data = {
 }
 
 
+
+
 def _get_mappers():
     mappers = []
     SUPPORTED_MAPPERS = mapper_data.keys()
@@ -370,7 +379,7 @@ def _get_mapper(code_table, code_table_index_field):
     for i, rec in df.iterrows():
        
 #        log.warn(f'record: {rec}')
-        mapper[str(rec[in_map])] = rec[out_map]
+        mapper[int(rec[in_map])] = rec[out_map]
 
     return mapper
     
