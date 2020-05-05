@@ -106,8 +106,6 @@ class QueryManager(object):
         else:
             df = pandas.concat(dfs)
 
-#        sql_query = self._parse_args(kwargs)
-
         if kwargs.get('column_selection', None) == 'basic_metadata':
             columns = ['observation_id', 'date_time', 'observation_duration', 'longitude',
                                      'latitude', 'height_above_surface', 'observed_variable', 'units',
@@ -130,19 +128,17 @@ class QueryManager(object):
 
         for col, mapper in mappers:
             if col in found_cols: 
-                log.warn(f'Mapping: {col}, with {mapper}')
+#                log.warn(f'Mapping: {col}, with {mapper}')
                 df[col].replace(mapper, inplace=True)
 
 
     def _validate_request(self, kwargs):
-        required = ['domain', 'frequency', 'variable', 'bbox', 'year']
+        required = ['domain', 'frequency', 'variable', 'year']
         for param in required:
             if param not in kwargs:
                 msg = f'Input parameter "{param}" must be provided.'
                 log.warn(msg)
                 raise KeyError(msg)
-
-#        return dict([(key, value[0]) for key, value in kwargs.items()])
 
     def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
         return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
@@ -151,6 +147,10 @@ class QueryManager(object):
         # Query the database and obtain data as Python objects
 #        query = "SELECT * FROM lite.observations WHERE date_time < '1763-01-01';"
 #        query = "SELECT * FROM lite.observations_1763_land_2 WHERE date_time < '1763-01-01';"
+        tmpl = ("SELECT * FROM lite.observations_{year}_{domain}_{report_type} WHERE "
+                "observed_variable IN {observed_variable} AND "
+                "data_policy_licence = {data_policy_licence} AND ")
+
         d = {}
         d['domain'] = kwargs['domain']
 
@@ -159,9 +159,8 @@ class QueryManager(object):
 
         if 'bbox' in kwargs:
             bbox = [float(_) for _ in kwargs['bbox'].split(',')]
-        else:
-            bbox = (-1, 50, 10, 60)
-        d['linestring'] = self._bbox_to_linestring(*bbox)
+            d['linestring'] = self._bbox_to_linestring(*bbox)
+            tmpl += "ST_Intersects({linestring}, location) AND "
 
         d['observed_variable'] = self._map_value('variable', kwargs['variable'],
                                      wfs_mappings['variable']['fields'],
@@ -170,18 +169,13 @@ class QueryManager(object):
         d['data_policy_licence'] = self._map_value('intended_use', kwargs['intended_use'],
                                      wfs_mappings['intended_use']['fields'])
 
-        d['quality_flag'] = self._map_value('data_quality', kwargs['data_quality'],
-                                     wfs_mappings['data_quality']['fields'])
+        if kwargs.get('data_quality', None) == 'quality_controlled': 
+            # Only include quality flag if set to QC'd data only
+            d['quality_flag'] = '0'
+            tmpl += "quality_flag = {quality_flag} AND "
 
         d['year'] = kwargs['year']
         d['month'] = kwargs['month']
-
-        # NEED COLUMNS FOR SELECTION!!!!
-        tmpl = ("SELECT * FROM lite.observations_{year}_{domain}_{report_type} WHERE "
-                "observed_variable IN {observed_variable} AND "
-                "data_policy_licence = {data_policy_licence} AND "
-                "quality_flag = {quality_flag} AND "
-                "ST_Intersects({linestring}, location) AND ")
 
         if kwargs['frequency'] == 'monthly':
             time_query = "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
@@ -200,20 +194,6 @@ class QueryManager(object):
                     d['hour'] = hour 
                     time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
                     yield (tmpl + time_query).format(**d)
-
-
-    def OLD(self):
-#        to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
-        OLD_query = ("SELECT {columns} FROM lite.observations_{year}_{domain}_{report_type} WHERE " 
-                "date_time BETWEEN '{year}-{month}-{day}' AND '{year}-{month}-28' AND " 
-                "observed_variable IN {observed_variable} AND " 
-                "data_policy_licence = {data_policy_licence} AND "
-                "quality_flag = {quality_flag} AND "
-                "ST_Intersects({linestring}, location);") #.format(**d)
-
-#        log.warn(f'QUERY: {query}')
-#        return query
-
 
     def _map_value(self, name, value, mapper, as_list=False):
         try: 
