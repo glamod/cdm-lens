@@ -139,6 +139,7 @@ class QueryManager(object):
                 log.warn(f'Mapping: {col}, with {mapper}')
                 df[col].replace(mapper, inplace=True)
 
+
     def _validate_request(self, kwargs):
         required = ['domain', 'frequency', 'variable', 'bbox', 'year']
         for param in required:
@@ -331,17 +332,18 @@ class QueryView(View):
         return file_like_object.getvalue()
 
 
+# Structure: column_name: (code_table, index, description)
 mapper_data = {
-    'report_type': ['type', 'abbreviation'],
-    'meaning_of_time_stamp': ['meaning', 'name'],
-    'observed_variable': ['variable', 'name'],
-    'units': ['units', 'abbreviation'],
-    'observation_value_significance': ['significance', 'description'], 
-    'duration': ['duration', 'description'],
-    'platform_type': ['type', 'description'],
-    'station_type': ['type', 'description'],
-    'quality_flag': ['flag', 'description'],
-    'data_policy_licence': ['policy', 'name']
+    'report_type': ['report_type', 'type', 'abbreviation'],
+    'date_time_meaning': ['meaning_of_time_stamp', 'meaning', 'name'],
+    'variable': ['observed_variable', 'variable', 'name'],
+    'units': ['units', 'units', 'abbreviation'],
+    'value_significance': ['observation_value_significance', 'significance', 'description'], 
+    'observation_duration': ['duration', 'duration', 'description'],
+    'platform_type': ['platform_type', 'type', 'description'],
+    'station_type': ['station_type', 'type', 'description'],
+    'quality_flag': ['quality_flag', 'flag', 'description'],
+    'data_policy_licence': ['data_policy_licence', 'policy', 'name']
 }
 
 
@@ -349,37 +351,30 @@ mapper_data = {
 
 def _get_mappers():
     mappers = []
-    SUPPORTED_MAPPERS = mapper_data.keys()
+#    SUPPORTED_MAPPERS = mapper_data.keys()
 
-    for code_table, code_table_index_field in QueryView.CODE_TABLES:
-        if code_table not in SUPPORTED_MAPPERS: continue
+    for column, (code_table, index_field, desc_field) in mapper_data.items(): # QueryView.CODE_TABLES:
 
-        mapper = _get_mapper(code_table, code_table_index_field)
-        mappers.append((code_table, mapper))
+        mapper = _get_mapper(code_table, index_field, desc_field)
+        mappers.append((column, mapper))
 
     return mappers
  
 
-def _get_mapper(code_table, code_table_index_field):
+def _get_mapper(code_table, index_field, desc_field):
     # Download a code table and convert it to, and return a dictionary
     query = LayerQuery(
         code_table,
-        index_field=code_table_index_field,
+        index_field=index_field,
         data_format='csv')
 
     code_table_data = query.fetch_data('to_csv')
 
-#    with open('/tmp/csv.csv', 'w', encoding='utf-8') as writer:
-#        writer.write(f'{code_table_data}') 
- 
     df = pd.read_csv(io.StringIO(code_table_data))
     mapper = {}
-    in_map, out_map = mapper_data[code_table]
 
     for i, rec in df.iterrows():
-       
-#        log.warn(f'record: {rec}')
-        mapper[int(rec[in_map])] = rec[out_map]
+        mapper[int(rec[index_field])] = rec[desc_field]
 
     return mapper
     
