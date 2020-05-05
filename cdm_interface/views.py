@@ -47,17 +47,11 @@ class SelectView(View):
     def get(self, request):
         log.warn(f'QUERY STRING: {request.GET}')
 
-#        log.warn(f'COPIED QUERY STRING: {rg}')
-        # if rg.get('cql_filter'):
-        #     rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
-        # query = WFSQuery(**rg)
-        # data = query.fetch_data()
-
-        if 1:#try:
+        try:
             qm = QueryManager()
             data = qm.run_query(request.GET.dict())
-        else:#except KeyError as exc:
-            return HttpResponse(f'Exception raised when running query: {str(exc)}')
+        except Exception as exc:
+            return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
         log.warn(f'LENGTH: {len(data)}')
         return self._build_response(data)
@@ -144,7 +138,9 @@ class QueryManager(object):
         required = ['domain', 'frequency', 'variable', 'bbox', 'year']
         for param in required:
             if param not in kwargs:
-                raise KeyError(f'Input {param} must be provided.')
+                msg = f'Input parameter "{param}" must be provided.'
+                log.warn(msg)
+                raise KeyError(msg)
 
 #        return dict([(key, value[0]) for key, value in kwargs.items()])
 
@@ -158,7 +154,7 @@ class QueryManager(object):
         d = {}
         d['domain'] = kwargs['domain']
 
-        d['report_type'] = self._map_value(kwargs['frequency'],
+        d['report_type'] = self._map_value('frequency', kwargs['frequency'],
                                 wfs_mappings['frequency']['fields'])
 
         if 'bbox' in kwargs:
@@ -167,14 +163,14 @@ class QueryManager(object):
             bbox = (-1, 50, 10, 60)
         d['linestring'] = self._bbox_to_linestring(*bbox)
 
-        d['observed_variable'] = self._map_value(kwargs['variable'],
+        d['observed_variable'] = self._map_value('variable', kwargs['variable'],
                                      wfs_mappings['variable']['fields'],
                                      as_list=True)
 
-        d['data_policy_licence'] = self._map_value(kwargs['intended_use'],
+        d['data_policy_licence'] = self._map_value('intended_use', kwargs['intended_use'],
                                      wfs_mappings['intended_use']['fields'])
 
-        d['quality_flag'] = self._map_value(kwargs['data_quality'],
+        d['quality_flag'] = self._map_value('data_quality', kwargs['data_quality'],
                                      wfs_mappings['data_quality']['fields'])
 
         d['year'] = kwargs['year']
@@ -219,11 +215,14 @@ class QueryManager(object):
 #        return query
 
 
-    def _map_value(self, value, mapper, as_list=False):
-        if ',' in value or as_list:
-            return '(' + ','.join([mapper[_] for _ in value.split(',')]) + ')'
-        else:
-            return mapper[value] 
+    def _map_value(self, name, value, mapper, as_list=False):
+        try: 
+            if ',' in value or as_list:
+                return '(' + ','.join([mapper[_] for _ in value.split(',')]) + ')'
+            else:
+                return mapper[value] 
+        except KeyError as exc:
+            raise Exception(f'Cannot find value "{value}" in list of valid options for parameter: "{name}".')
  
 
 class QueryView(View):
@@ -336,7 +335,7 @@ class QueryView(View):
 mapper_data = {
     'report_type': ['report_type', 'type', 'abbreviation'],
     'date_time_meaning': ['meaning_of_time_stamp', 'meaning', 'name'],
-    'variable': ['observed_variable', 'variable', 'name'],
+    'observed_variable': ['observed_variable', 'variable', 'name'],
     'units': ['units', 'units', 'abbreviation'],
     'value_significance': ['observation_value_significance', 'significance', 'description'], 
     'observation_duration': ['duration', 'duration', 'description'],
