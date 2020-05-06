@@ -120,7 +120,7 @@ def extract_csv_records(input_data, index_field=None, mappers=None):
     data = []
     to_remove = ['FID', 'location']
 
-    log.warn(f'mappers: {mappers}')
+#    log.warn(f'mappers: {mappers}')
 
     for row in input_data:
         # Remove FID column

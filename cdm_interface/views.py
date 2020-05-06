@@ -10,6 +10,10 @@ import re
 import json
 import zipfile
 
+import os
+import pandas
+import psycopg2
+
 from io import BytesIO
 from collections import namedtuple
 from django.views.generic import View
@@ -26,8 +30,6 @@ from cdm_interface._loader import local_conn_str
 import logging
 logging.basicConfig()
 log = logging.getLogger(__name__)
-
-
 
 
 class SelectView(View):
@@ -54,18 +56,22 @@ class SelectView(View):
             return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
         log.warn(f'LENGTH: {len(data)}')
-        return self._build_response(data)
+        compress = json.loads(request.GET.get("compress", True))
+        return self._build_response(data, compress=compress)
 
-    def _build_response(self, data):
+    def _build_response(self, data, compress=True):
         data = data.to_csv(index=False)
 
-        content_type = "application/x-zip-compressed"
-        response_file_name = f"{self.response_file_name}.zip"
-
-        data = self._compress_data(data)
+        if compress: 
+            content_type = "application/x-zip-compressed"
+            response_file_name = f"{self.response_file_name}.zip"
+            data = self._compress_data(data)
+        else:
+            content_type = "text/csv"
+            response_file_name = f"{self.response_file_name}.csv"
 
         response = HttpResponse(data, content_type=content_type)
-        content_disposition = f"attachment; filename=\"{response_file_name}\""
+        content_disposition = f'attachment; filename="{response_file_name}"'
         response["Content-Disposition"] = content_disposition
 
         return response
@@ -73,16 +79,12 @@ class SelectView(View):
     def _compress_data(self, data):
 
         file_like_object = BytesIO()
-        zipfile_ob = zipfile.ZipFile(file_like_object, "w")
+        zipfile_ob = zipfile.ZipFile(file_like_object, "w", compression=zipfile.ZIP_DEFLATED)
         zipfile_ob.writestr(f"{self.response_file_name}.{self.output_format}", data)
+        zipfile_ob.close()
         
         return file_like_object.getvalue()
 
-
-
-import os
-import pandas
-import psycopg2
 
 # noinspection SqlDialectInspection
 class QueryManager(object):
