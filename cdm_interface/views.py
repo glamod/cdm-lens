@@ -56,7 +56,7 @@ class SelectView(View):
             return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
         log.warn(f'LENGTH: {len(data)}')
-        compress = json.loads(request.GET.get("compress", True))
+        compress = json.loads(request.GET.get("compress", "true"))
         return self._build_response(data, compress=compress)
 
     def _build_response(self, data, compress=True):
@@ -143,7 +143,8 @@ class QueryManager(object):
                 raise KeyError(msg)
 
     def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
-        return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
+#        return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
+        return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
 
     def _generate_queries(self, kwargs):
         # Query the database and obtain data as Python objects
@@ -162,7 +163,7 @@ class QueryManager(object):
         if 'bbox' in kwargs:
             bbox = [float(_) for _ in kwargs['bbox'].split(',')]
             d['linestring'] = self._bbox_to_linestring(*bbox)
-            tmpl += "ST_Intersects({linestring}, location) AND "
+            tmpl += "ST_Intersects({linestring}, location::geometry) AND "
 
         d['observed_variable'] = self._map_value('variable', kwargs['variable'],
                                      wfs_mappings['variable']['fields'],
