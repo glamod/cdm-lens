@@ -7,13 +7,16 @@ import calendar
 # - if no "labels" then "labels" matches "fields" keys
 # - if "labels" == "__standard__": then "labels" are .replace('_', ' ').capitalize() of fields
 
+# ['36', '44', '45', '53', '55', '57', '58', '85', '95', '106', '107']
+
+
 wfs_mappings = {
     "frequency": {
         "target": "report_type",
         "fields": {
             "monthly": "2",
             "daily": "3",
-            "sub-daily": "0"
+            "sub_daily": "0"
         }, 
         "labels": '__standard__'
     },
@@ -28,6 +31,7 @@ wfs_mappings = {
             'fresh_snow': "45",
             'snow_depth': "53",
             'snow_water_equivalent': "55",
+            'water_temperature': "95",
             'wind_from_direction': "106",
             'wind_speed': "107"
         },
@@ -36,8 +40,8 @@ wfs_mappings = {
     "intended_use": {
         "target": "data_policy_licence",
         "fields": {
-            "non-commercial": "1",
-            "commercial": "0"
+            "open": "0",
+            "non_commercial": "1"
         },
         "labels": "__standard__"
     },

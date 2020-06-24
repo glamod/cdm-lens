@@ -48,6 +48,7 @@ class SelectView(View):
 
     def get(self, request):
         log.warn(f'QUERY STRING: {request.GET}')
+        log.warn(f'Query string: {self.request.GET.urlencode()}')
 
         try:
             qm = QueryManager()
@@ -136,11 +137,16 @@ class QueryManager(object):
 
     def _validate_request(self, kwargs):
         required = ['domain', 'frequency', 'variable', 'year']
+
         for param in required:
             if param not in kwargs:
                 msg = f'Input parameter "{param}" must be provided.'
                 log.warn(msg)
                 raise KeyError(msg)
+
+        allowed_domains = ('marine', 'land')
+        if kwargs['domain'] not in allowed_domains:
+            raise Exception(f'"domain" must be one of: {allowed_domains}')
 
     def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
 #        return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
@@ -255,6 +261,8 @@ class QueryView(View):
         self._output_format = None
 
     def _build_response(self, data):
+
+        log.warning(f'Query string: {self.request.GET.urlencode()}')
 
         compress = json.loads(
             self.request.GET.get("compress", self.DEFAULT_COMPRESS_VALUE))

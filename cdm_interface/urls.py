@@ -7,13 +7,16 @@ __license__ = "BSD - see LICENSE file in top-level directory"
 
 
 from django.urls import path
+from django.shortcuts import redirect
 
 from cdm_interface import views as interface_views
 
 
 urlpatterns = [
 
+#    path('select/', interface_views.SelectView.as_view()),
     path('select/', interface_views.SelectView.as_view()),
+    path('v1/select/', interface_views.SelectView.as_view()),
     path('wfs/', interface_views.RawWFSView.as_view()),
 
 #    path('records/',
