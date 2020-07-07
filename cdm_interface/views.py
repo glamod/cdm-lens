@@ -52,7 +52,7 @@ class SelectView(View):
 
         try:
             qm = QueryManager()
-            data = qm.run_query(request.GET.dict())
+            data = qm.run_query(request.GET)
         except Exception as exc:
             return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
@@ -149,10 +149,20 @@ class QueryManager(object):
             raise Exception(f'"domain" must be one of: {allowed_domains}')
 
     def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
-#        return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
+# OLD:       return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
         return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
 
-    def _generate_queries(self, kwargs):
+
+    def _get_as_list(self, qdict, key):
+        value = qdict.getlist(key)
+
+        if len(value) == 1 and ',' in value[0]:
+            return value[0].split(',')
+
+        return value
+
+
+    def _generate_queries(self, qdict):
         # Query the database and obtain data as Python objects
 #        query = "SELECT * FROM lite.observations WHERE date_time < '1763-01-01';"
 #        query = "SELECT * FROM lite.observations_1763_land_2 WHERE date_time < '1763-01-01';"
@@ -161,53 +171,59 @@ class QueryManager(object):
                 "data_policy_licence = {data_policy_licence} AND ")
 
         d = {}
-        d['domain'] = kwargs['domain']
+        d['domain'] = qdict['domain']
 
-        d['report_type'] = self._map_value('frequency', kwargs['frequency'],
+        d['report_type'] = self._map_value('frequency', qdict['frequency'],
                                 wfs_mappings['frequency']['fields'])
 
-        if 'bbox' in kwargs:
-            bbox = [float(_) for _ in kwargs['bbox'].split(',')]
+        if 'bbox' in qdict:
+            bbox = [float(_) for _ in qdict['bbox'].split(',')]
             d['linestring'] = self._bbox_to_linestring(*bbox)
             tmpl += "ST_Intersects({linestring}, location::geometry) AND "
 
-        d['observed_variable'] = self._map_value('variable', kwargs['variable'],
+        d['observed_variable'] = self._map_value('variable', self._get_as_list(qdict, 'variable'),
                                      wfs_mappings['variable']['fields'],
                                      as_list=True)
 
-        d['data_policy_licence'] = self._map_value('intended_use', kwargs['intended_use'],
+        d['data_policy_licence'] = self._map_value('intended_use', qdict['intended_use'],
                                      wfs_mappings['intended_use']['fields'])
 
-        if kwargs.get('data_quality', None) == 'quality_controlled': 
+        if qdict.get('data_quality', None) == 'quality_controlled': 
             # Only include quality flag if set to QC'd data only
             d['quality_flag'] = '0'
             tmpl += "quality_flag = {quality_flag} AND "
 
-        d['year'] = kwargs['year']
-        d['month'] = kwargs['month']
+        d['year'] = qdict['year']
+        d['month'] = qdict['month']
 
-        if kwargs['frequency'] == 'monthly':
+        if qdict['frequency'] == 'monthly':
             time_query = "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
             yield (tmpl + time_query).format(**d)
 
-        elif kwargs['frequency'] == 'daily':
-            for day in kwargs['day'].split(','):
+        elif qdict['frequency'] == 'daily':
+
+            for day in self._get_as_list(qdict, 'day'):
                 d['day'] = day
                 time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
                 yield (tmpl + time_query).format(**d)
                 
-        elif kwargs['frequency'] == 'sub-daily':
-            for day in kwargs['day'].split(','):
+        elif qdict['frequency'] == 'sub_daily':
+
+            for day in self._get_as_list(qdict, 'day'):
                 d['day'] = day
-                for hour in kwargs['hour'].split(','):
+
+                for hour in self._get_as_list(qdict, 'hour'):
                     d['hour'] = hour 
                     time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
                     yield (tmpl + time_query).format(**d)
 
+        else:
+            raise Exception('Incorrect value for "frequency". Must be one of: ("monthly", "daily", "sub_daily").')
+
     def _map_value(self, name, value, mapper, as_list=False):
         try: 
-            if ',' in value or as_list:
-                return '(' + ','.join([mapper[_] for _ in value.split(',')]) + ')'
+            if as_list:
+                return '(' + ','.join([mapper[_] for _ in value]) + ')'
             else:
                 return mapper[value] 
         except KeyError as exc:
