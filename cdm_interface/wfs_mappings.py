@@ -66,9 +66,8 @@ wfs_mappings = {
         }
     },
     "month": {
-        "fields": {
-            "__auto__": [calendar.month_name[i] for i in range(1, 13)]
-        }
+        "fields": dict([(f'{i:02d}', f'{i:02d}') for i in range(1, 13)]),
+        "labels": dict([(f'{i:02d}', calendar.month_name[i]) for i in range(1, 13)])
     },
     "day": {
         "fields": {
