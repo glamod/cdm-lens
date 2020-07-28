@@ -1,8 +1,8 @@
 """ Views for the cdm_interface app. """
 
-__author__ = "William Tucker"
-__date__ = "2019-10-03"
-__copyright__ = "Copyright 2019 United Kingdom Research and Innovation"
+__author__ = "Ag Stephens"
+__date__ = "2020-08-01"
+__copyright__ = "Copyright 2020 United Kingdom Research and Innovation"
 __license__ = "BSD - see LICENSE file in top-level directory"
 
 
@@ -24,8 +24,8 @@ import io
 import pandas as pd
 
 from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
-from cdm_interface.wfs_mappings import wfs_mappings
 from cdm_interface._loader import local_conn_str
+from cdm_interface.sql_mngr import SQLManager
 
 import logging
 logging.basicConfig()
@@ -99,7 +99,9 @@ class QueryManager(object):
 
         dfs = []
 
-        for sql_query in self._generate_queries(kwargs):
+        sql_manager = SQLManager()
+
+        for sql_query in [sql_manager._generate_queries(kwargs)]:
             log.warn(f'RUNNING SQL: {sql_query}')
             df = pandas.read_sql(sql_query, self._conn)
             dfs.append(df)
@@ -148,87 +150,10 @@ class QueryManager(object):
         if kwargs['domain'] not in allowed_domains:
             raise Exception(f'"domain" must be one of: {allowed_domains}')
 
-    def _bbox_to_linestring(self, w, s, e, n, srid='4326'):
-# OLD:       return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
-        return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
+        allowed_frequencies = ('monthly', 'daily', 'sub_daily')
+        if kwargs['frequency'] not in allowed_frequencies:
+            raise Exception(f'Incorrect value for "frequency". Must be one of: {allowed_frequencies}.')
 
-
-    def _get_as_list(self, qdict, key):
-        value = qdict.getlist(key)
-
-        if len(value) == 1 and ',' in value[0]:
-            return value[0].split(',')
-
-        return value
-
-
-    def _generate_queries(self, qdict):
-        # Query the database and obtain data as Python objects
-#        query = "SELECT * FROM lite.observations WHERE date_time < '1763-01-01';"
-#        query = "SELECT * FROM lite.observations_1763_land_2 WHERE date_time < '1763-01-01';"
-        tmpl = ("SELECT * FROM lite.observations_{year}_{domain}_{report_type} WHERE "
-                "observed_variable IN {observed_variable} AND "
-                "data_policy_licence = {data_policy_licence} AND ")
-
-        d = {}
-        d['domain'] = qdict['domain']
-
-        d['report_type'] = self._map_value('frequency', qdict['frequency'],
-                                wfs_mappings['frequency']['fields'])
-
-        if 'bbox' in qdict:
-            bbox = [float(_) for _ in qdict['bbox'].split(',')]
-            d['linestring'] = self._bbox_to_linestring(*bbox)
-            tmpl += "ST_Intersects({linestring}, location::geometry) AND "
-
-        d['observed_variable'] = self._map_value('variable', self._get_as_list(qdict, 'variable'),
-                                     wfs_mappings['variable']['fields'],
-                                     as_list=True)
-
-        d['data_policy_licence'] = self._map_value('intended_use', qdict['intended_use'],
-                                     wfs_mappings['intended_use']['fields'])
-
-        if qdict.get('data_quality', None) == 'quality_controlled': 
-            # Only include quality flag if set to QC'd data only
-            d['quality_flag'] = '0'
-            tmpl += "quality_flag = {quality_flag} AND "
-
-        d['year'] = qdict['year']
-        d['month'] = qdict['month']
-
-        if qdict['frequency'] == 'monthly':
-            time_query = "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
-            yield (tmpl + time_query).format(**d)
-
-        elif qdict['frequency'] == 'daily':
-
-            for day in self._get_as_list(qdict, 'day'):
-                d['day'] = day
-                time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
-                yield (tmpl + time_query).format(**d)
-                
-        elif qdict['frequency'] == 'sub_daily':
-
-            for day in self._get_as_list(qdict, 'day'):
-                d['day'] = day
-
-                for hour in self._get_as_list(qdict, 'hour'):
-                    d['hour'] = hour 
-                    time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
-                    yield (tmpl + time_query).format(**d)
-
-        else:
-            raise Exception('Incorrect value for "frequency". Must be one of: ("monthly", "daily", "sub_daily").')
-
-    def _map_value(self, name, value, mapper, as_list=False):
-        try: 
-            if as_list:
-                return '(' + ','.join([mapper[_] for _ in value]) + ')'
-            else:
-                return mapper[value] 
-        except KeyError as exc:
-            raise Exception(f'Cannot find value "{value}" in list of valid options for parameter: "{name}".')
- 
 
 class QueryView(View):
 
