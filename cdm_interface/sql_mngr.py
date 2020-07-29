@@ -120,10 +120,15 @@ class SQLManager(object):
         UTC = datetime.timezone.utc
 
         for x in itertools.product(*time_iterators):
-            #try:
-            all_times.append(datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
-            #except:
-            #    pass
+            # Use try/except to ignore any invalid time combinations
+            try:
+                all_times.append(datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
+            except Exception as err:
+                pass
+
+        # Check if any times found
+        if not all_times:
+            raise Exception('Could not generate any valid date/time values from the parameters provided.')
 
         time_condition = "date_trunc('{}', date_time) in ({});".format(period, 
                                 ', '.join(["'{}'::timestamptz".format(x) for x in all_times])
