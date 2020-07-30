@@ -128,13 +128,20 @@ class QueryManager(object):
 
 
     def _map_values(self, df):
-        mappers = _get_mappers()
-        found_cols = [_ for _ in df.columns]
 
-        for col, mapper in mappers:
-            if col in found_cols: 
+#        df_test = df.copy(deep=True)
+        mappers = _get_mappers()
+        df.replace(dict(mappers), inplace=True)
+
+#        found_cols = [_ for _ in df.columns]
+#        df_test.replace(dict(mappers), inplace=True)
+
+#        log.warn('4')
+
+#        for col, mapper in mappers:
+#            if col in found_cols: 
 #                log.warn(f'Mapping: {col}, with {mapper}')
-                df[col].replace(mapper, inplace=True)
+#                df[col].replace(mapper, inplace=True)
 
 
     def _validate_request(self, kwargs):
