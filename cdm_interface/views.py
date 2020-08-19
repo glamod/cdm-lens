@@ -121,6 +121,11 @@ class QueryManager(object):
         else:
             df = df.drop(columns=['location'])
 
+        # If source_id exists then drop it before returning
+        source_id = 'source_id'
+        if source_id in df: 
+            df.drop(columns=[source_id], inplace=True)
+ 
         self._map_values(df)
         # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',
         #           date_format='%Y-%m-%d %H:%M:%S%z')
