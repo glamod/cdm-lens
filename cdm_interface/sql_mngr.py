@@ -138,39 +138,3 @@ class SQLManager(object):
 
  #       elif qdict['frequency'] == 'daily':
  #               time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
- #       elif qdict['frequency'] == 'sub_daily': 
- #               time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
-
-
-
-class OLDTimeHandler(object):
-
-    def OLDhandle(self):
-
-        d['year'] = qdict['year']
-        d['month'] = qdict['month']
-
-        if qdict['frequency'] == 'monthly':
-            time_query = "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
-            yield (sql_req + time_query).format(**d)
-
-        elif qdict['frequency'] == 'daily':
-
-            for day in self._get_as_list(qdict, 'day'):
-                d['day'] = day
-                time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
-                yield (sql_req + time_query).format(**d)
-                
-        elif qdict['frequency'] == 'sub_daily':
-
-            for day in self._get_as_list(qdict, 'day'):
-                d['day'] = day
-
-                for hour in self._get_as_list(qdict, 'hour'):
-                    d['hour'] = hour 
-                    time_query = "date_trunc('hour', date_time) = TIMESTAMP '{year}-{month}-{day} {hour}:00:00';"
-                    yield (sql_req + time_query).format(**d)
-
-        else:
-            raise Exception('Incorrect value for "frequency". Must be one of: ("monthly", "daily", "sub_daily").')
-

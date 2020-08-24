@@ -1,0 +1,9 @@
+country_id|country|institute|data_policy_link|data_policy
+FI|Finland|Finnish Met Institute|https://en.ilmatieteenlaitos.fi/open-data|5
+GM|Germany|DWD|https://opendata.dwd.de/climate_environment/CDC/Terms_of_use.pdf|0
+EI|Ireland|Met Éireann|https://www.met.ie/climate/available-data/historical-data|5
+LU|Luxembourg|Meteolux|https://www.meteolux.lu/fr/aide/aspects-legaux/?lang=fr, no additional data - https://community.wmo.int/notifications|5
+NL|Netherlands|KNMI|https://www.knmi.nl/copyright|5
+NO|Norway|MET Norway|https://www.met.no/en/free-meteorological-data/licensing-and-crediting|5
+SW|Sweden|SMHI|https://www.smhi.se/omsmhi/policys/datapolicy/mer-och-mer-oppna-data-1.8138|5
+US|United States|NOAA NCEI|https://www.ncdc.noaa.gov/wdcmet, https://obamawhitehouse.archives.gov/sites/default/files/omb/memoranda/2013/m-13-13.pdf|0
