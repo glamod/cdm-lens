@@ -150,13 +150,17 @@ class QueryManager(object):
 
 
     def _validate_request(self, kwargs):
-        required = ['domain', 'frequency', 'variable', 'year']
+        required = ['domain', 'frequency', 'variable']
 
         for param in required:
             if param not in kwargs:
                 msg = f'Input parameter "{param}" must be provided.'
                 log.warn(msg)
                 raise KeyError(msg)
+
+        # Check either 'time' or 'year' provided
+        if 'time' not in kwargs and ('year' not in kwargs or 'month' not in kwargs):
+            raise Exception('Either "time" or time compoonents must be provided.')
 
         allowed_domains = ('marine', 'land')
         if kwargs['domain'] not in allowed_domains:

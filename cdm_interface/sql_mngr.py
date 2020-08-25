@@ -15,12 +15,17 @@ query = "SELECT * FROM lite.observations_1763_land_2 WHERE date_time < '1763-01-
 
 import itertools
 import datetime
+import re
 
 from cdm_interface.wfs_mappings import wfs_mappings
+from cdm_interface.utils import decompose_datetime
 
 import logging
 logging.basicConfig()
 log = logging.getLogger(__name__)
+
+
+UTC = datetime.timezone.utc
 
 
 class SQLManager(object):
@@ -32,7 +37,6 @@ class SQLManager(object):
 
     def _get_as_list(self, qdict, key):
         value = qdict.getlist(key)
-####        if key == 'year': log.warning(f'{key}: {value}')
         if len(value) == 1 and ',' in value[0]:
             return value[0].split(',')
 
@@ -81,24 +85,33 @@ class SQLManager(object):
             d['quality_flag'] = '0'
             tmpl += "quality_flag = {quality_flag} AND "
 
-        year = d['year'] = self._get_as_list(qdict, 'year')[0]
-        months = self._get_as_list(qdict, 'month')
-        months.sort()
 
-        # Set defaults for days and hours
-        days = None
-        hours = None
+        # If the request includes the "time" parameter then ignore other temporal parameters
+        if qdict.get('time'):
+            time_condition = self._get_time_range_condition(qdict['time'])
+            # "year" is needed in template to match the partition
+            d['year'] = qdict['time'][:4] 
 
-        # Overwrite days and hours if relevant to the query
-        if qdict['frequency'] in ('daily', 'sub_daily'):
-            days = self._get_as_list(qdict, 'day')
-            days.sort()
+        else:
+            year = d['year'] = self._get_as_list(qdict, 'year')[0]
+            months = self._get_as_list(qdict, 'month')
+            months.sort()
 
-        if qdict['frequency'] == 'sub_daily':
-            hours = self._get_as_list(qdict, 'hour')
-            hours.sort()
+            # Set defaults for days and hours
+            days = None
+            hours = None
 
-        time_condition = self._get_time_condition([year], months, days, hours)
+            # Overwrite days and hours if relevant to the query
+            if qdict['frequency'] in ('daily', 'sub_daily'):
+                days = self._get_as_list(qdict, 'day')
+                days.sort()
+
+            if qdict['frequency'] == 'sub_daily':
+                hours = self._get_as_list(qdict, 'hour')
+                hours.sort()
+
+            time_condition = self._get_time_condition([year], months, days, hours)
+
         return (tmpl + time_condition).format(**d)
 
 
@@ -117,7 +130,6 @@ class SQLManager(object):
             time_iterators = [years, months, days, hours]
 
         all_times = []
-        UTC = datetime.timezone.utc
 
         for x in itertools.product(*time_iterators):
             # Use try/except to ignore any invalid time combinations
@@ -136,5 +148,24 @@ class SQLManager(object):
 
         return time_condition
 
- #       elif qdict['frequency'] == 'daily':
- #               time_query = "date_trunc('day', date_time) = TIMESTAMP '{year}-{month}-{day} 00:00:00';"
+
+    def _get_time_range_condition(self, time_range):
+        log.info(f'Parsing time range: "{time_range}"')
+
+        if '/' not in time_range:
+             raise Exception(f'Time range must be provided as "<start_time>/<end_time>", not "{time_range}".')
+
+        start, end = time_range.split('/')
+        start = decompose_datetime(start, 'start')
+        end = decompose_datetime(end, 'end')
+
+        if start.year != end.year:
+            raise Exception('Time range selections must be a maximum of 1 year. Please modify your request.')
+
+        start_time, end_time = [_.astimezone(UTC) for _ in (start, end)]
+
+        time_condition = f"date_time BETWEEN '{start_time}'::timestamptz AND '{end_time}'::timestamptz;"
+        return time_condition
+
+        
+
