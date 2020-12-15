@@ -3,7 +3,7 @@
 `EXPLAIN SELECT` - tells you what is being selected.
 
 ```
-EXPLAIN SELECT * FROM lite.observations_1999_land_0 WHERE observed_variable IN (44,85) AND data_policy_licence = 1 AND quality_flag = 0 AND ST_Polygon('LINESTRING(-1.0 55.0, -1.0 59.0, 3.0 59.0, 3.0 55.0, -1.0 55.0)'::geometry, 4326) && location AND ST_Intersects(ST_Polygon('LINESTRING(-1.0 55.0, -1.0 59.0, 3.0 59.0, 3.0 55.0, -1.0 55.0)'::geometry, 4326), location) AND date_trunc('hour', date_time) = TIMESTAMP '1999-03-03 06:00:00';
+EXPLAIN SELECT * FROM lite_2_0.observations_1999_land_0 WHERE observed_variable IN (44,85) AND data_policy_licence = 1 AND quality_flag = 0 AND ST_Polygon('LINESTRING(-1.0 55.0, -1.0 59.0, 3.0 59.0, 3.0 55.0, -1.0 55.0)'::geometry, 4326) && location AND ST_Intersects(ST_Polygon('LINESTRING(-1.0 55.0, -1.0 59.0, 3.0 59.0, 3.0 55.0, -1.0 55.0)'::geometry, 4326), location) AND date_trunc('hour', date_time) = TIMESTAMP '1999-03-03 06:00:00';
 
  - shows:
   - indexes not being used: 
@@ -29,19 +29,19 @@ CHANGED:
 
  1. Change location index from "btree" to "gist"
  Tried:
-    CREATE INDEX observations_1919_land_0_location_gist_idx ON lite.observations_1919_land_0 USING gist ( location );
-    CREATE INDEX observations_1998_land_0_location_gist_idx ON lite.observations_1998_land_0 USING gist ( location );
+    CREATE INDEX observations_1919_land_0_location_gist_idx ON lite_2_0.observations_1919_land_0 USING gist ( location );
+    CREATE INDEX observations_1998_land_0_location_gist_idx ON lite_2_0.observations_1998_land_0 USING gist ( location );
     - takes 10 minutes to create INDEX
-    CREATE INDEX observations_1999_land_0_location_gist_idx ON lite.observations_1999_land_0 USING gist ( location );
+    CREATE INDEX observations_1999_land_0_location_gist_idx ON lite_2_0.observations_1999_land_0 USING gist ( location );
 
  Can undo with: 
-    DROP INDEX lite.observations_1919_land_0_location_gist_idx ;
+    DROP INDEX lite_2_0.observations_1919_land_0_location_gist_idx ;
  2. See changes below
 ```
 EXPLAIN SELECT
                 COUNT(*)
 FROM
-                lite.observations_1919_land_0
+                lite_2_0.observations_1919_land_0
 WHERE
                 location && ST_GeogFromText('SRID=4326;POLYGON((-179.0 -55.0, -179.0 59.0, 3.0 59.0, 3.0 -55.0, -179.0 -55.0))')
                 AND ST_Intersects(ST_GeogFromText('SRID=4326;POLYGON((-179.0 -55.0, -179.0 59.0, 3.0 59.0, 3.0 -55.0, -179.0 -55.0))'), location)
@@ -62,7 +62,7 @@ If I was to write this query it would look something like
 SELECT 
                 * 
 FROM 
-                lite.observations_1999_land_0 
+                lite_2_0.observations_1999_land_0 
 WHERE 
                 observed_variable IN (44,85) 
                 AND data_policy_licence = 1 
@@ -77,7 +77,7 @@ Changed to use ST_GeogFromText to explicitly cast as the geography rather than g
 the same as the LINESTRING and ST_POLYGON but I’m not too familiar with these commands.
 
 Made it so the date / time comparison is explicitly the same as the date_time column. Again it would
-be worth checking to make sure that they are still in agreement with the cdm lite.
+be worth checking to make sure that they are still in agreement with the cdm lite_2_0.
 
 In terms of `&&` and `ST_Intersects` – they do different things and will return different results.
 && checks the bounding boxes, using an index if defined, some results from outside of the polygon

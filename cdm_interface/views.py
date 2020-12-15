@@ -294,21 +294,26 @@ mapper_data = {
 }
 
 
+def _insert_underscores(s):
+    return s.replace(' ', '_')
 
 
 def _get_mappers():
     mappers = []
-#    SUPPORTED_MAPPERS = mapper_data.keys()
 
-    for column, (code_table, index_field, desc_field) in mapper_data.items(): # QueryView.CODE_TABLES:
+    for column, (code_table, index_field, desc_field) in mapper_data.items(): 
 
-        mapper = _get_mapper(code_table, index_field, desc_field)
+        processor = None
+        if column == 'observed_variable':
+            processor = _insert_underscores  
+ 
+        mapper = _get_mapper(code_table, index_field, desc_field, processor=processor)
         mappers.append((column, mapper))
 
     return mappers
  
 
-def _get_mapper(code_table, index_field, desc_field):
+def _get_mapper(code_table, index_field, desc_field, processor=None):
     # Download a code table and convert it to, and return a dictionary
     query = LayerQuery(
         code_table,
@@ -321,7 +326,12 @@ def _get_mapper(code_table, index_field, desc_field):
     mapper = {}
 
     for i, rec in df.iterrows():
-        mapper[int(rec[index_field])] = rec[desc_field]
+        value = rec[desc_field]
+
+        if processor: 
+            value = processor(value)
+
+        mapper[int(rec[index_field])] = value
 
     return mapper
     

@@ -26,11 +26,12 @@ log = logging.getLogger(__name__)
 
 
 UTC = datetime.timezone.utc
+SCHEMA = 'lite_2_0'
 
 
 class SQLManager(object):
 
-    tmpl = ("SELECT * FROM lite.observations_{year}_{domain}_{report_type} WHERE "
+    tmpl = ("SELECT * FROM {SCHEMA}.observations_{year}_{domain}_{report_type} WHERE "
         "observed_variable IN {observed_variable} AND "
         "data_policy_licence = {data_policy_licence} AND ")
 
@@ -62,7 +63,7 @@ class SQLManager(object):
 
         tmpl = self.tmpl
 
-        d = {}
+        d = {'SCHEMA': SCHEMA}
         d['domain'] = qdict['domain']
 
         d['report_type'] = self._map_value('frequency', qdict['frequency'],

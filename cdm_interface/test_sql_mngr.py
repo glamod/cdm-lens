@@ -1,6 +1,8 @@
 from django.http import QueryDict
 from cdm_interface.sql_mngr import SQLManager
 
+SCHEMA = 'lite_2_0'
+
 
 def test_get_time_condition_1():
     s = SQLManager()
@@ -21,10 +23,10 @@ def test_sql_query_1():
     s = SQLManager()
     resp = s._generate_queries(x)
 
-    expected = "SELECT * FROM lite.observations_2019_land_0 WHERE observed_variable IN (44,85) " \
-               "AND data_policy_licence = 1 AND ST_Intersects(ST_MakeEnvelope(-1.0, 50.0, 10.0," \
-               " 59.0, 4326), location::geometry) AND quality_flag = 0 AND date_trunc('hour', " \
-               "date_time) in ('2019-03-25 01:00:00+00:00'::timestamptz);"
+    expected = f"SELECT * FROM {SCHEMA}.observations_2019_land_0 WHERE observed_variable IN (44,85) " \
+                "AND data_policy_licence = 1 AND ST_Intersects(ST_MakeEnvelope(-1.0, 50.0, 10.0," \
+                " 59.0, 4326), location::geometry) AND quality_flag = 0 AND date_trunc('hour', " \
+                "date_time) in ('2019-03-25 01:00:00+00:00'::timestamptz);"
     assert(resp == expected)
 
 
