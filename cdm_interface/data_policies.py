@@ -1,25 +1,12 @@
 import pandas as pd
 from io import StringIO
 
-from cdm_interface._loader import local_conn_str
-
-
-RUBBISH_data = """
-country_id|country|institute|data_policy_link|data_policy
-FI|Finland|Finnish Met Institute|https://en.ilmatieteenlaitos.fi/open-data|5
-GM|Germany|DWD|https://opendata.dwd.de/climate_environment/CDC/Terms_of_use.pdf|0
-EI|Ireland|Met Éireann|https://www.met.ie/climate/available-data/historical-data|5
-LU|Luxembourg|Meteolux|https://www.meteolux.lu/fr/aide/aspects-legaux/?lang=fr, no additional data - https://community.wmo.int/notifications|5
-NL|Netherlands|KNMI|https://www.knmi.nl/copyright|5
-NO|Norway|MET Norway|https://www.met.no/en/free-meteorological-data/licensing-and-crediting|5
-SW|Sweden|SMHI|https://www.smhi.se/omsmhi/policys/datapolicy/mer-och-mer-oppna-data-1.8138|5
-US|United States|NOAA NCEI|https://www.ncdc.noaa.gov/wdcmet, https://obamawhitehouse.archives.gov/sites/default/files/omb/memoranda/2013/m-13-13.pdf|0
-""".strip()
 
 NATIONAL_POLICIES_FILE = '/usr/local/cdm_lens/tables/national_data_policies.psv' 
 SOURCE_CONFIG_FILE = '/usr/local/cdm_lens/tables/source_configuration.psv'
 
 ndp = None
+source_config = None
 
 
 def get_national_data_policies():
@@ -31,7 +18,16 @@ def get_national_data_policies():
     return ndp
 
 
-def _select(sql_query, conn_str=local_conn_str):
+def get_source_config():
+    global source_config
+
+    if source_config is None:
+        source_config = pd.read_csv(SOURCE_CONFIG_FILE, sep='|')         
+
+    return source_config
+
+
+def _select(sql_query, conn_str):
     """
     Issue a SELECT statement to the DB and return result
     as a DataFrame.
@@ -51,7 +47,7 @@ def _get_policies_by_source(df):
 #                 f' FROM source_configuration WHERE source_id IN ({source_ids_string});'
 #    df = _select(source_sql)
 
-    source_config = pd.read_csv(SOURCE_CONFIG_FILE, sep='|')
+    source_config = get_source_config()
     source_df = source_config[source_config['source_id'].isin(source_ids)]
 
     # Return filtered df containing only the required fields

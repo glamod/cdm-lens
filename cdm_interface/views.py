@@ -18,14 +18,16 @@ from io import BytesIO
 from collections import namedtuple
 from django.views.generic import View
 from django.http import HttpResponse
+from django.conf import settings
+
 
 import io
 
 import pandas as pd
 
 from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
-from cdm_interface._loader import local_conn_str
 from cdm_interface.sql_mngr import SQLManager
+from cdm_interface.data_policies import get_data_policies
 
 import logging
 logging.basicConfig()
@@ -52,48 +54,93 @@ class SelectView(View):
 
         try:
             qm = QueryManager()
-            data = qm.run_query(request.GET)
+            data, data_policy_text = qm.run_query(request.GET)
         except Exception as exc:
             return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
         log.warn(f'LENGTH: {len(data)}')
         compress = json.loads(request.GET.get("compress", "true"))
-        return self._build_response(data, compress=compress)
+        return self._build_response(data, data_policy_text, compress=compress)
 
-    def _build_response(self, data, compress=True):
+    def _build_response(self, data, data_policy_text='', compress=True):
         data = data.to_csv(index=False)
+
+        # Check valid combination of arguments
+        if data_policy_text and not compress:
+            return HttpResponse('Cannot return a data policy info to uncompressed response.')
 
         if compress: 
             content_type = "application/x-zip-compressed"
             response_file_name = f"{self.response_file_name}.zip"
-            data = self._compress_data(data)
+ 
+            data_policy_file = ('data_policy_and_citation.txt', data_policy_text)
+            zipped_bytes = self._get_zipped_response(data, data_policy_file)
         else:
             content_type = "text/csv"
             response_file_name = f"{self.response_file_name}.csv"
 
-        response = HttpResponse(data, content_type=content_type)
+        response = HttpResponse(zipped_bytes, content_type=content_type)
         content_disposition = f'attachment; filename="{response_file_name}"'
         response["Content-Disposition"] = content_disposition
 
         return response
 
-    def _compress_data(self, data):
+    def _get_zipped_response(self, data, *extra_files):
 
         file_like_object = BytesIO()
         zipfile_ob = zipfile.ZipFile(file_like_object, "w", compression=zipfile.ZIP_DEFLATED)
         zipfile_ob.writestr(f"{self.response_file_name}.{self.output_format}", data)
+
+        # Add extra files if they exist
+        for fname, content in extra_files:
+            zipfile_ob.writestr(fname, content)
+
         zipfile_ob.close()
         
         return file_like_object.getvalue()
 
 
+
 # noinspection SqlDialectInspection
 class QueryManager(object):
 
-    def __init__(self, conn_str=local_conn_str):
+    def __init__(self, conn_str=settings.LOCAL_CONN_STR):
         self._conn = psycopg2.connect(conn_str)
 
+    def _get_data_policy_text(self, results):
+        """
+        Returns the text content for the data policy file that should be 
+        returned alongside the data file(s). 
+   
+        The input is a pandas DataFrame of results, whilst it still includes
+        the `source_id`, which is needed for this processing.
+
+        Full details of this process are listed at: 
+            https://github.com/glamod/glamod-ingest/issues/13
+
+        In short, the workflow is:
+
+          1. For each unique source_id: 
+             SELECT product_name, product_references, product_citation FROM \
+                    source_configuration WHERE source_id = <source_id>;
+          2. For each unique observation_id:
+             - get unique set of country codes (first two characters)
+          3. For each unique country code:
+             - look up Data Policy Link in table 
+          4. Compile that unique set into a text file and return it as a text file.
+             Each item might include:
+             - data policy link
+             - product_name (i.e. the source name)
+             - product_references
+             - product_citation
+
+        Initial implementation gets both of these tables from local files (instead of
+        database)
+        """
+        return get_data_policies(results, rendered=True)
+
     def run_query(self, kwargs):
+        "Returns tuple of: (results_data_frame, data_policy_text)"
         log.warn(f'kwargs: {kwargs}')
         self._validate_request(kwargs)        
 
@@ -121,6 +168,9 @@ class QueryManager(object):
         else:
             df = df.drop(columns=['location'])
 
+        # Get data policy text
+        data_policy_text = self._get_data_policy_text(df)
+
         # If source_id exists then drop it before returning
         source_id = 'source_id'
         if source_id in df: 
@@ -129,8 +179,7 @@ class QueryManager(object):
         self._map_values(df)
         # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',
         #           date_format='%Y-%m-%d %H:%M:%S%z')
-        return df
-
+        return df, data_policy_text
 
     def _map_values(self, df):
 
@@ -240,7 +289,7 @@ class QueryView(View):
             content_type = "application/x-zip-compressed"
             response_file_name = f"{self.response_file_name}.zip"
 
-            data = self._compress_data(data, include_code_tables=False)
+            data = self._get_zipped_response(data, include_code_tables=False)
 
         else:
 
@@ -254,7 +303,7 @@ class QueryView(View):
 
         return response
 
-    def _compress_data(self, data, include_code_tables=False):
+    def _get_zipped_response(self, data, include_code_tables=False):
 
         file_like_object = BytesIO()
         zipfile_ob = zipfile.ZipFile(file_like_object, "w")
