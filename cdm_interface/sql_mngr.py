@@ -33,7 +33,7 @@ class SQLManager(object):
 
     tmpl = ("SELECT * FROM {SCHEMA}.observations_{year}_{domain}_{report_type} WHERE "
         "observed_variable IN {observed_variable} AND "
-        "data_policy_licence = {data_policy_licence} AND ")
+        "data_policy_licence IN {data_policy_licence} AND ")
 
 
     def _get_as_list(self, qdict, key):
@@ -58,6 +58,16 @@ class SQLManager(object):
         # PREVIOUSLY:  return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
         return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
 
+    def _get_data_policy_licence(self, value):
+        """Special treatment to map single value to list of values based on:
+        - non_commercial --> '(0,1)'
+        - open (i.e. for any/commercial use) --> '(0)'
+        """
+        if value == 'non_commercial':
+            return '(0,1)'
+
+        # Default is only open/commercial data
+        return '(0)'
 
     def _generate_queries(self, qdict):
 
@@ -78,8 +88,9 @@ class SQLManager(object):
                                      wfs_mappings['variable']['fields'],
                                      as_array=True)
 
-        d['data_policy_licence'] = self._map_value('intended_use', qdict['intended_use'],
-                                     wfs_mappings['intended_use']['fields'])
+#        d['data_policy_licence'] = self._map_value('intended_use', qdict['intended_use'],
+#                                     wfs_mappings['intended_use']['fields'])
+        d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
 
         if qdict.get('data_quality', None) == 'quality_controlled': 
             # Only include quality flag if set to QC'd data only

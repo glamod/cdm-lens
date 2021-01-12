@@ -162,7 +162,7 @@ class QueryManager(object):
             columns = ['observation_id', 'date_time', 'observation_duration', 'longitude',
                                      'latitude', 'height_above_surface', 'observed_variable', 'units',
                                      'observation_value', 'value_significance', 'primary_station_id',
-                                     'station_name', 'quality_flag']
+                                     'station_name', 'quality_flag', 'source_id']
             df = df[columns]
 
         else:
