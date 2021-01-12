@@ -172,9 +172,9 @@ class QueryManager(object):
         data_policy_text = self._get_data_policy_text(df)
 
         # If source_id exists then drop it before returning
-        source_id = 'source_id'
-        if source_id in df: 
-            df.drop(columns=[source_id], inplace=True)
+#        source_id = 'source_id'
+#        if source_id in df: 
+#            df.drop(columns=[source_id], inplace=True)
  
         self._map_values(df)
         # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',

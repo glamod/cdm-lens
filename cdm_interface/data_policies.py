@@ -92,7 +92,7 @@ def _render_data_policies(pols):
     by_source = ''
 
     for _, row in pols['by_source'].iterrows():
-        by_source += f'Source: {row["product_name"]} (ID: {row["source_id"]}):\n' 
+        by_source += f'Source: {row["product_name"]} (Source ID: {row["source_id"]}):\n' 
         
         found = False
         for key in ('product_name', 'product_references', 'product_citation'):
@@ -115,7 +115,7 @@ def _render_data_policies(pols):
     by_nation = ''
 
     for _, row in pols['by_nation'].iterrows():
-        by_nation += f'National Data Policy Information: {row["country"]} (ID: {row["country_id"]}):\n'
+        by_nation += f'National Data Policy Information: {row["country"]} (Nation ID: {row["country_id"]}):\n'
 
         found = False
         for key in ('data_policy_link', 'institute'):
