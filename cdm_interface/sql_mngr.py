@@ -25,7 +25,7 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 
 
-UTC = datetime.timezone.utc
+#UTC = datetime.timezone.utc
 SCHEMA = 'lite_2_0'
 
 
@@ -88,8 +88,6 @@ class SQLManager(object):
                                      wfs_mappings['variable']['fields'],
                                      as_array=True)
 
-#        d['data_policy_licence'] = self._map_value('intended_use', qdict['intended_use'],
-#                                     wfs_mappings['intended_use']['fields'])
         d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
 
         if qdict.get('data_quality', None) == 'quality_controlled': 
@@ -146,7 +144,11 @@ class SQLManager(object):
         for x in itertools.product(*time_iterators):
             # Use try/except to ignore any invalid time combinations
             try:
-                all_times.append(datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
+                tm = datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H')
+                #tm_with_tz = tm.astimezone(UTC)  # <-- did not work with python3.6 datetime
+                tm_with_tz = f'{tm_with_tz}+00:00'
+                all_times.append(tm_with_tz)
+                #datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
             except Exception as err:
                 pass
 
@@ -174,7 +176,8 @@ class SQLManager(object):
         if start.year != end.year:
             raise Exception('Time range selections must be a maximum of 1 year. Please modify your request.')
 
-        start_time, end_time = [_.astimezone(UTC) for _ in (start, end)]
+        #start_time, end_time = [_.astimezone(UTC) for _ in (start, end)] # <-- failed with pre-1800 python3.6
+        start_time, end_time = [f'{_}+00:00' for _ in (start, end)]
 
         time_condition = f"date_time BETWEEN '{start_time}'::timestamptz AND '{end_time}'::timestamptz;"
         return time_condition

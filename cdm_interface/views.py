@@ -9,9 +9,10 @@ __license__ = "BSD - see LICENSE file in top-level directory"
 import re
 import json
 import zipfile
-
 import os
-import pandas
+import io
+
+import pandas as pd
 import psycopg2
 
 from io import BytesIO
@@ -19,11 +20,6 @@ from collections import namedtuple
 from django.views.generic import View
 from django.http import HttpResponse
 from django.conf import settings
-
-
-import io
-
-import pandas as pd
 
 from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
 from cdm_interface.sql_mngr import SQLManager
@@ -56,6 +52,12 @@ class SelectView(View):
             qm = QueryManager()
             data, data_policy_text = qm.run_query(request.GET)
         except Exception as exc:
+
+            log.warn(f'[ERROR] Failed with exception: {exc}')
+
+#            with open('/tmp/failures.txt', 'a') as writer:
+#                writer.write(str(request.GET) + '\n' + str(exc) + '\n\n')
+
             return HttpResponse(f'Exception raised when running query: {str(exc)}', status=400)
 
         log.warn(f'LENGTH: {len(data)}')
@@ -150,22 +152,42 @@ class QueryManager(object):
 
         for sql_query in [sql_manager._generate_queries(kwargs)]:
             log.warn(f'RUNNING SQL: {sql_query}')
-            df = pandas.read_sql(sql_query, self._conn)
+
+            try:
+                df = pd.read_sql(sql_query, self._conn)
+            except Exception:
+                continue
+
             dfs.append(df)
 
+        all_columns = ['observation_id', 'data_policy_licence', 'date_time', 'date_time_meaning', 
+                       'observation_duration', 'longitude', 'latitude', 'report_type', 
+                       'height_above_surface', 'observed_variable', 'units', 'observation_value', 
+                       'value_significance', 'platform_type', 'station_type', 'primary_station_id', 
+                       'station_name', 'quality_flag', 'source_id', 'location']
+
+        basic_metadata_columns = ['observation_id', 'date_time', 'observation_duration', 'longitude',
+                                  'latitude', 'height_above_surface', 'observed_variable', 'units',
+                                  'observation_value', 'value_significance', 'primary_station_id',
+                                  'station_name', 'quality_flag', 'source_id']
+
+        if not dfs:
+            # If no data has been found (or no valid tables for date range)
+            # Create empty DataFrame with required headers
+            dfs = [pd.DataFrame(columns=all_columns)]
+            
+        # If only one data frame return it, otherwise concatenate them into one
         if len(dfs) == 1:
             df = dfs[0]
         else:
-            df = pandas.concat(dfs)
+            df = pd.concat(dfs)
 
+        # Filter the columns if only basic metadata requested
         if kwargs.get('column_selection', None) == 'basic_metadata':
-            columns = ['observation_id', 'date_time', 'observation_duration', 'longitude',
-                                     'latitude', 'height_above_surface', 'observed_variable', 'units',
-                                     'observation_value', 'value_significance', 'primary_station_id',
-                                     'station_name', 'quality_flag', 'source_id']
-            df = df[columns]
+            df = df[basic_metadata_columns]
 
         else:
+            # Only drop "location" column extended metadata required
             df = df.drop(columns=['location'])
 
         # Get data policy text

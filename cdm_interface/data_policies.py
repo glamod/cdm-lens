@@ -33,15 +33,16 @@ def _select(sql_query, conn_str):
     as a DataFrame.
     """
     _conn = psycopg2.connect(conn_str)
-    df = pandas.read_sql(sql_query, self._conn)
+    df = pd.read_sql(sql_query, self._conn)
     return df
 
 
 def _get_policies_by_source(df):
     source_ids = list(df['source_id'].unique())
+    req_fields = ['source_id', 'product_name', 'product_references', 'product_citation']
 
     if not source_ids:
-        return []
+        return pd.DataFrame(columns=req_fields)
 
 #    source_sql = 'SELECT source_id, product_name, product_references, product_citation' \
 #                 f' FROM source_configuration WHERE source_id IN ({source_ids_string});'
@@ -51,7 +52,6 @@ def _get_policies_by_source(df):
     source_df = source_config[source_config['source_id'].isin(source_ids)]
 
     # Return filtered df containing only the required fields
-    req_fields = ['source_id', 'product_name', 'product_references', 'product_citation']
     return source_df[req_fields]
 
 
@@ -77,7 +77,6 @@ def _get_policies_by_nation(df):
 
     # Extract and return records for countries with matching policies
     national_policies = ndps[ndps['country_id'].isin(list(countries))]
-#df[df['observation_id'].str.slice(0, 2).str.contains('|'.join(countries), regex=True)]
     return national_policies
 
 
@@ -167,6 +166,13 @@ EIM00006253-1-1999-03-02-00:00-85-12,WMO essential,1999-03-02 00:00:00+00:00,beg
     df = pd.read_csv(StringIO(_data), sep=',')
     pols = get_data_policies(df)
     print(pols)
+
+    all_columns = ['observation_id', 'data_policy_licence', 'date_time', 'date_time_meaning', 'observation_duration', 'longitude', 'latitude', 'report_type', 'height_above_surface', 'observed_variable', 'units', 'observation_value', 'value_significance', 'platform_type', 'station_type', 'primary_station_id', 'station_name', 'quality_flag', 'source_id']
+    empty_df = pd.DataFrame(columns=all_columns)
+
+    pols = get_data_policies(empty_df)
+    assert pols == '# Data Policy Information for Observation Records\n\n## Data Policies derived from Sources\n\nNo data policy information derived from Source information.\n\n## National Data Policies\n\nNo data policy information derived from national policies.\n'
+    print('Empty data policy for no data works!')
 
 
 if __name__ == '__main__':
