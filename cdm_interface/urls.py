@@ -17,7 +17,9 @@ urlpatterns = [
 #    path('select/', interface_views.SelectView.as_view()),
     path('select/', interface_views.SelectView.as_view()),
     path('v1/select/', interface_views.SelectView.as_view()),
-    path('wfs/', interface_views.RawWFSView.as_view()),
+    path('v1/constraints/<domain>', interface_views.ConstraintsView.as_view()),
+#    path('wfs/', interface_views.RawWFSView.as_view()),
+    
 
 #    path('records/',
 #        interface_views.LiteRecordView.as_view()),

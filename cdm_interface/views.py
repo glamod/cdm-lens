@@ -511,6 +511,33 @@ class RawWFSView(QueryView):
         return cql.strip()
 
 
+class ConstraintsView(View):
+
+#    def __init__(self, *args, **kwargs):
+#        super().__init__(*args, **kwargs)
+
+    def get(self, request, domain):
+
+        log.warn(f'Requested constraints for: {domain}')
+        domain = domain.lower()
+
+        if domain not in ('land', 'marine'):
+            return HttpResponse('Domain must be one of: "land", "marine".', status=400)
+
+        content_type = "application/json"
+        response_file_path = self._get_constraints_path(domain)
+        response_file_name = os.path.basename(response_file_path)
+
+        response = HttpResponse(open(response_file_path).read(), content_type=content_type)
+        content_disposition = f"attachment; filename=\"{response_file_name}\""
+        response["Content-Disposition"] = content_disposition
+
+        return response
+
+    def _get_constraints_path(self, domain):
+        return f'{settings.STATIC_ROOT}/constraints/constraints-{domain}.json'
+
+
 class LayerView(QueryView):
 
     DEFAULT_OUTPUT_FORMAT = "csv"
