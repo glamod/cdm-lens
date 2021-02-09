@@ -11,6 +11,8 @@ import json
 import zipfile
 import os
 import io
+import random
+from dateutil import parser
 
 import pandas as pd
 import psycopg2
@@ -24,6 +26,7 @@ from django.conf import settings
 from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
 from cdm_interface.sql_mngr import SQLManager
 from cdm_interface.data_policies import get_data_policies
+from cdm_interface.file_namer import OutputFileNamer
 
 import logging
 logging.basicConfig()
@@ -36,13 +39,9 @@ class SelectView(View):
         super().__init__(*args, **kwargs)
         #self._output_format = None
 
-    @property
-    def response_file_name(self):
-        return "results"
-
-    @property
-    def output_format(self):
-        return "csv"
+#    @property
+#    def output_format(self):
+#        return "csv"
 
     def get(self, request):
         log.warn(f'QUERY STRING: {request.GET}')
@@ -62,39 +61,43 @@ class SelectView(View):
 
         log.warn(f'LENGTH: {len(data)}')
         compress = json.loads(request.GET.get("compress", "true"))
-        return self._build_response(data, data_policy_text, compress=compress)
+        return self._build_response(request, data, data_policy_text, compress=compress)
 
-    def _build_response(self, data, data_policy_text='', compress=True):
+    def _build_response(self, request, data, data_policy_text='', compress=True):
         data = data.to_csv(index=False)
 
         # Check valid combination of arguments
         if data_policy_text and not compress:
             return HttpResponse('Cannot return a data policy info to uncompressed response.')
 
+        file_namer = OutputFileNamer(request.GET)
+        zip_name = file_namer.get_zip_name()
+
         if compress: 
             content_type = "application/x-zip-compressed"
-            response_file_name = f"{self.response_file_name}.zip"
+            response_file_name = zip_name
  
-            data_policy_file = ('data_policy_and_citation.txt', data_policy_text)
-            zipped_bytes = self._get_zipped_response(data, data_policy_file)
+            data_policy_file = (file_namer.get_policy_name(), data_policy_text)
+            csv_file = (file_namer.get_csv_name(), data) 
+            zipped_bytes = self._get_zipped_response((csv_file, data_policy_file))
         else:
             content_type = "text/csv"
-            response_file_name = f"{self.response_file_name}.csv"
+            response_file_name = file_namer.get_csv_name()
 
         response = HttpResponse(zipped_bytes, content_type=content_type)
-        content_disposition = f'attachment; filename="{response_file_name}"'
+        content_disposition = f'attachment; filename="{zip_name}"'
         response["Content-Disposition"] = content_disposition
 
         return response
 
-    def _get_zipped_response(self, data, *extra_files):
+    def _get_zipped_response(self, file_pairs):
 
         file_like_object = BytesIO()
         zipfile_ob = zipfile.ZipFile(file_like_object, "w", compression=zipfile.ZIP_DEFLATED)
-        zipfile_ob.writestr(f"{self.response_file_name}.{self.output_format}", data)
 
-        # Add extra files if they exist
-        for fname, content in extra_files:
+#        zipfile_ob.writestr(f"{self.response_file_name}.{self.output_format}", data)
+
+        for fname, content in file_pairs:
             zipfile_ob.writestr(fname, content)
 
         zipfile_ob.close()
@@ -512,9 +515,6 @@ class RawWFSView(QueryView):
 
 
 class ConstraintsView(View):
-
-#    def __init__(self, *args, **kwargs):
-#        super().__init__(*args, **kwargs)
 
     def get(self, request, domain):
 

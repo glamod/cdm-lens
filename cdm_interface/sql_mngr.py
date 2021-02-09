@@ -143,13 +143,13 @@ class SQLManager(object):
 
         for x in itertools.product(*time_iterators):
             # Use try/except to ignore any invalid time combinations
-            try:
+            if 1: #try:
                 tm = datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H')
                 #tm_with_tz = tm.astimezone(UTC)  # <-- did not work with python3.6 datetime
-                tm_with_tz = f'{tm_with_tz}+00:00'
+                tm_with_tz = f'{tm}+00:00'
                 all_times.append(tm_with_tz)
                 #datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
-            except Exception as err:
+            else: #except Exception as err:
                 pass
 
         # Check if any times found
