@@ -50,6 +50,7 @@ class SQLManager(object):
                 return '(' + ','.join([mapper[_] for _ in value]) + ')'
             else:
                 return mapper[value] 
+
         except KeyError as exc:
             raise Exception(f'Cannot find value "{value}" in list of valid options for parameter: "{name}".')
  
@@ -117,7 +118,7 @@ class SQLManager(object):
                 days.sort()
 
             if qdict['frequency'] == 'sub_daily':
-                hours = self._get_as_list(qdict, 'hour')
+                hours = self._get_as_list(qdict, 'hour') or [f'{_:02d}' for _ in range(24)]
                 hours.sort()
 
             time_condition = self._get_time_condition([year], months, days, hours)
