@@ -23,7 +23,8 @@ from django.views.generic import View
 from django.http import HttpResponse
 from django.conf import settings
 
-from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records, extract_csv_records
+#from cdm_interface.utils import LayerQuery, WFSQuery, extract_json_records,
+from cdm_interface.utils import extract_csv_records
 from cdm_interface.sql_mngr import SQLManager
 from cdm_interface.data_policies import get_data_policies
 from cdm_interface.file_namer import OutputFileNamer
@@ -114,33 +115,15 @@ class QueryManager(object):
 
     def _get_data_policy_text(self, results):
         """
-        Returns the text content for the data policy file that should be 
-        returned alongside the data file(s). 
-   
+        Uses data policy manager to decide on the data policy info to provide.
+        Returns the text content for the data policy file that should be
+        returned alongside the data file(s).
+
         The input is a pandas DataFrame of results, whilst it still includes
         the `source_id`, which is needed for this processing.
 
         Full details of this process are listed at: 
             https://github.com/glamod/glamod-ingest/issues/13
-
-        In short, the workflow is:
-
-          1. For each unique source_id: 
-             SELECT product_name, product_references, product_citation FROM \
-                    source_configuration WHERE source_id = <source_id>;
-          2. For each unique observation_id:
-             - get unique set of country codes (first two characters)
-          3. For each unique country code:
-             - look up Data Policy Link in table 
-          4. Compile that unique set into a text file and return it as a text file.
-             Each item might include:
-             - data policy link
-             - product_name (i.e. the source name)
-             - product_references
-             - product_citation
-
-        Initial implementation gets both of these tables from local files (instead of
-        database)
         """
         return get_data_policies(results, rendered=True)
 
@@ -158,7 +141,9 @@ class QueryManager(object):
 
             try:
                 df = pd.read_sql(sql_query, self._conn)
+                log.warn(f'SUCCESS: Extracted a DataFrame of length: {len(df)}')
             except Exception:
+                log.warn(f'FAILED: Error when extracting data!')
                 continue
 
             dfs.append(df)
@@ -300,10 +285,10 @@ class QueryView(View):
 
         mappers = _get_mappers()
 
-        # Manage the data to remove excess WFS padding in JSON/CSV
-        if self.output_format.extension == 'json':
-            data = extract_json_records(data)
-            data = json.dumps(data)
+        # # Manage the data to remove excess WFS padding in JSON/CSV
+        # if self.output_format.extension == 'json':
+        #     data = extract_json_records(data)
+        #     data = json.dumps(data)
 
         if self.output_format.extension == 'csv':
             data = extract_csv_records(data, mappers=mappers)
@@ -387,16 +372,21 @@ def _get_mappers():
     return mappers
  
 
-def _get_mapper(code_table, index_field, desc_field, processor=None):
+def _get_mapper(code_table, index_field, desc_field, processor=None, conn=None):
+
     # Download a code table and convert it to, and return a dictionary
-    query = LayerQuery(
-        code_table,
-        index_field=index_field,
-        data_format='csv')
+    # query = LayerQuery(code_table, index_field=index_field, data_format='csv')
+    # code_table_data = query.fetch_data('to_csv')
+    # df = pd.read_csv(io.StringIO(code_table_data))
 
-    code_table_data = query.fetch_data('to_csv')
+    # Set up psycopg2 connection
+    if not conn:
+        conn_str = settings.LOCAL_CONN_STR
+        conn = psycopg2.connect(conn_str)
 
-    df = pd.read_csv(io.StringIO(code_table_data))
+    sql_query = f"SELECT * FROM {code_table};"
+    df = pd.read_sql(sql_query, conn)
+
     mapper = {}
 
     for i, rec in df.iterrows():
@@ -408,110 +398,111 @@ def _get_mapper(code_table, index_field, desc_field, processor=None):
         mapper[int(rec[index_field])] = value
 
     return mapper
-    
-
-class RawWFSView(QueryView):
-
-    def get(self, request):
-
-        log.warn(f'QUERY STRING: {request.GET}')
-
-        rg = request.GET.copy()
-        log.warn(f'COPIED QUERY STRING: {rg}')
-
-        if rg.get('cql_filter'):
-            rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
-
-        log.warn(f'FIXED QUERY STRING: {rg}')
-
-        query = WFSQuery(**rg)
-        data = query.fetch_data()
-
-        return self._build_response(data)
 
 
-    def _map_cql_filter(self, cql): 
-        # NOTE: domain is MANUALLY mapped in strings because simpler than integrating into wfs_mappings
-        #
-        # E.G.: 'cql_filter': ['date_time DURING 1999-06-01T00:00:00Z/1999-06-01T23:59:59Z AND 
-        #     observed_variable IN (44,85) AND report_type=3 AND platform_type NOT IN (2,5) AND 
-        #     quality_flag=0 AND data_policy_licence=non_commercial']
-        to_map = wfs_mappings.keys()
-        to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
-        cql=cql + ' '
-#        comps = cql.split()
+
+# class RawWFSView(QueryView):
+
+#     def get(self, request):
+
+#         log.warn(f'QUERY STRING: {request.GET}')
+
+#         rg = request.GET.copy()
+#         log.warn(f'COPIED QUERY STRING: {rg}')
+
+#         if rg.get('cql_filter'):
+#             rg['cql_filter'] = self._map_cql_filter(rg['cql_filter'])
+
+#         log.warn(f'FIXED QUERY STRING: {rg}')
+
+#         query = WFSQuery(**rg)
+#         data = query.fetch_data()
+
+#         return self._build_response(data)
+
+
+#     def _map_cql_filter(self, cql): 
+#         # NOTE: domain is MANUALLY mapped in strings because simpler than integrating into wfs_mappings
+#         #
+#         # E.G.: 'cql_filter': ['date_time DURING 1999-06-01T00:00:00Z/1999-06-01T23:59:59Z AND 
+#         #     observed_variable IN (44,85) AND report_type=3 AND platform_type NOT IN (2,5) AND 
+#         #     quality_flag=0 AND data_policy_licence=non_commercial']
+#         to_map = wfs_mappings.keys()
+#         to_map = ['intended_use', 'frequency', 'data_quality', 'variable']
+#         cql=cql + ' '
+# #        comps = cql.split()
         
-        r0 = '^(?P<start>.*)'
-        r1 = '(?P<end>.*)$'
+#         r0 = '^(?P<start>.*)'
+#         r1 = '(?P<end>.*)$'
 
-        for key in to_map:
+#         for key in to_map:
 
-            mapper = wfs_mappings[key]
-            target_field = mapper['target']
+#             mapper = wfs_mappings[key]
+#             target_field = mapper['target']
 
-            res = []
+#             res = []
             
-#            re.match('^(?P<start>.*)(?P<found>x in y)(?P<end>.*)$', 'hello x in y').groupdict()
-            regex = f'{r0}(?P<found>{key}=)(?P<value>[^ ]+)\s*{r1}'
-            log.warn(f'regex: {regex}')
-            m1 = re.match(regex, cql)
+# #            re.match('^(?P<start>.*)(?P<found>x in y)(?P<end>.*)$', 'hello x in y').groupdict()
+#             regex = f'{r0}(?P<found>{key}=)(?P<value>[^ ]+)\s*{r1}'
+#             log.warn(f'regex: {regex}')
+#             m1 = re.match(regex, cql)
 
-            if m1:
-                d = m1.groupdict()
-                mapped_value = mapper['fields'][d['value']]
-                value = f'{target_field}={mapped_value}'
-                cql = d['start'] + value + ' ' + d['end'].strip()
-                log.warn(f'UPDATE TO cql: {cql}')
+#             if m1:
+#                 d = m1.groupdict()
+#                 mapped_value = mapper['fields'][d['value']]
+#                 value = f'{target_field}={mapped_value}'
+#                 cql = d['start'] + value + ' ' + d['end'].strip()
+#                 log.warn(f'UPDATE TO cql: {cql}')
 
-            regex = f'{r0}(?P<found>{key} IN )(?P<value>[^ ]+)\s*{r1}'
-            log.warn(f'regex: {regex}')
-            m1 = re.match(regex, cql)
+#             regex = f'{r0}(?P<found>{key} IN )(?P<value>[^ ]+)\s*{r1}'
+#             log.warn(f'regex: {regex}')
+#             m1 = re.match(regex, cql)
 
-            if m1:
-                d = m1.groupdict()
-                items = d['value'].split('(')[1][:-1].split(',')
-                mapped_value = ','.join([mapper['fields'][_] for _ in items])
-                value = f'{target_field} IN ({mapped_value})'
-                cql = d['start'] + value + ' ' + d['end'].strip()
-                log.warn(f'UPDATE TO cql: {cql}')
+#             if m1:
+#                 d = m1.groupdict()
+#                 items = d['value'].split('(')[1][:-1].split(',')
+#                 mapped_value = ','.join([mapper['fields'][_] for _ in items])
+#                 value = f'{target_field} IN ({mapped_value})'
+#                 cql = d['start'] + value + ' ' + d['end'].strip()
+#                 log.warn(f'UPDATE TO cql: {cql}')
 
-        regex = f'{r0}(?P<found>domain=)(?P<value>[^ ]+)\s*{r1}'
-        log.warn(f'regex: {regex}')
-        m1 = re.match(regex, cql)
+#         regex = f'{r0}(?P<found>domain=)(?P<value>[^ ]+)\s*{r1}'
+#         log.warn(f'regex: {regex}')
+#         m1 = re.match(regex, cql)
 
-        if m1:
-            d = m1.groupdict()
-            if d['value'] == 'land':
-                mapped_value = 'platform_type NOT IN (2,5)'
-            elif d['value'] == 'marine':
-                mapped_value = 'platform_type IN (2,5)'
+#         if m1:
+#             d = m1.groupdict()
+#             if d['value'] == 'land':
+#                 mapped_value = 'platform_type NOT IN (2,5)'
+#             elif d['value'] == 'marine':
+#                 mapped_value = 'platform_type IN (2,5)'
                 
-            value = mapped_value
-            cql = d['start'] + value + ' ' + d['end'].strip()
-            log.warn(f'UPDATE TO cql: {cql}')
+#             value = mapped_value
+#             cql = d['start'] + value + ' ' + d['end'].strip()
+#             log.warn(f'UPDATE TO cql: {cql}')
 
  
-        for comp in []: #comps:
-                value = comp
+#         for comp in []: #comps:
+#                 value = comp
 
-                if value.startswith(f'{key}='):
-                    mapped_value = mapper['fields'][value.split('=')[1]]
-                    log.warn(f'{value} --> {target_field}={mapped_value}')
-                    res.append(f'{target_field}={mapped_value}')
-                elif value.startswith(f'{key} IN ('):
-                    items = value.split('(')[1][:-1].split(',')
-                    mapped_value = ','.join([mapper['fields'][_] for _ in items])
-                    res.append(f'{target_field}={mapped_value}')
-                elif value == 'domain=land':
-                    res.append('platform_type NOT IN (2,5)')
-                elif value == 'domain=marine':
-                    res.append('platform_type IN (2,5)') 
-                else:
-                    res.append(value)
+#                 if value.startswith(f'{key}='):
+#                     mapped_value = mapper['fields'][value.split('=')[1]]
+#                     log.warn(f'{value} --> {target_field}={mapped_value}')
+#                     res.append(f'{target_field}={mapped_value}')
+#                 elif value.startswith(f'{key} IN ('):
+#                     items = value.split('(')[1][:-1].split(',')
+#                     mapped_value = ','.join([mapper['fields'][_] for _ in items])
+#                     res.append(f'{target_field}={mapped_value}')
+#                 elif value == 'domain=land':
+#                     res.append('platform_type NOT IN (2,5)')
+#                 elif value == 'domain=marine':
+#                     res.append('platform_type IN (2,5)') 
+#                 else:
+#                     res.append(value)
 
-#            comps = res[:]
+# #            comps = res[:]
 
-        return cql.strip()
+#         return cql.strip()
 
 
 class ConstraintsView(View):
@@ -538,82 +529,82 @@ class ConstraintsView(View):
         return f'{settings.STATIC_ROOT}/constraints/constraints-{domain}.json'
 
 
-class LayerView(QueryView):
+# class LayerView(QueryView):
 
-    DEFAULT_OUTPUT_FORMAT = "csv"
-    DEFAULT_COMPRESS_VALUE = "false"
+#     DEFAULT_OUTPUT_FORMAT = "csv"
+#     DEFAULT_COMPRESS_VALUE = "false"
 
-    layer_name = None
-    index_field = None
+#     layer_name = None
+#     index_field = None
 
-    @property
-    def response_file_name(self):
-        return self.layer_name
+#     @property
+#     def response_file_name(self):
+#         return self.layer_name
 
-    def get(self, request, index=None):
+#     def get(self, request, index=None):
 
-        query = LayerQuery(
-            self.layer_name,
-            index_field=self.index_field,
-            index=index,
-            count=self.request.GET.get("count"),
-            data_format=self.output_format.fetch_key
-        )
-        data = query.fetch_data(
-            self.output_format.output_method)
+#         query = LayerQuery(
+#             self.layer_name,
+#             index_field=self.index_field,
+#             index=index,
+#             count=self.request.GET.get("count"),
+#             data_format=self.output_format.fetch_key
+#         )
+#         data = query.fetch_data(
+#             self.output_format.output_method)
 
-        return self._build_response(data)
-
-
-class LiteRecordView(LayerView):
-    layer_name = "observations"
-    index_field = "observation_id"
+#         return self._build_response(data)
 
 
-class ReportTypeView(LayerView):
-    layer_name = "report_type"
-    index_field = "type"
+# class LiteRecordView(LayerView):
+#     layer_name = "observations"
+#     index_field = "observation_id"
 
 
-class MeaningOfTimeStampView(LayerView):
-    layer_name = "meaning_of_time_stamp"
-    index_field = "meaning"
+# class ReportTypeView(LayerView):
+#     layer_name = "report_type"
+#     index_field = "type"
 
 
-class ObservedVariableView(LayerView):
-    layer_name = "observed_variable"
-    index_field = "variable"
-
-class UnitsView(LayerView):
-    layer_name = "units"
-    index_field = "units"
+# class MeaningOfTimeStampView(LayerView):
+#     layer_name = "meaning_of_time_stamp"
+#     index_field = "meaning"
 
 
-class ObservationValueSignificanceView(LayerView):
-    layer_name = "observation_value_significance"
-    index_field = "significance"
+# class ObservedVariableView(LayerView):
+#     layer_name = "observed_variable"
+#     index_field = "variable"
+
+# class UnitsView(LayerView):
+#     layer_name = "units"
+#     index_field = "units"
 
 
-class DurationView(LayerView):
-    layer_name = "duration"
-    index_field = "duration"
+# class ObservationValueSignificanceView(LayerView):
+#     layer_name = "observation_value_significance"
+#     index_field = "significance"
 
 
-class PlatformTypeView(LayerView):
-    layer_name = "platform_type"
-    index_field = "type"
+# class DurationView(LayerView):
+#     layer_name = "duration"
+#     index_field = "duration"
 
 
-class StationTypeView(LayerView):
-    layer_name = "station_type"
-    index_field = "type"
+# class PlatformTypeView(LayerView):
+#     layer_name = "platform_type"
+#     index_field = "type"
 
 
-class QualityFlagView(LayerView):
-    layer_name = "quality_flag"
-    index_field = "flag"
+# class StationTypeView(LayerView):
+#     layer_name = "station_type"
+#     index_field = "type"
 
 
-class DataPolicyLicenceView(LayerView):
-    layer_name = "data_policy_licence"
-    index_field = "policy"
+# class QualityFlagView(LayerView):
+#     layer_name = "quality_flag"
+#     index_field = "flag"
+
+
+# class DataPolicyLicenceView(LayerView):
+#     layer_name = "data_policy_licence"
+#     index_field = "policy"

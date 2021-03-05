@@ -22,93 +22,93 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 
 
-class WFSQuery:
+# class WFSQuery:
 
-    def __init__(self, **kwargs):
+#     def __init__(self, **kwargs):
 
-        self._wfs_url = settings.WFS_URL
-        self._query_dict = kwargs
+#         self._wfs_url = settings.WFS_URL
+#         self._query_dict = kwargs
 
-    def fetch_data(self):
+#     def fetch_data(self):
 
-        query = furl(self._wfs_url)
+#         query = furl(self._wfs_url)
 
-        for key, value in self._query_dict.items():
-            query.args[key] = value
+#         for key, value in self._query_dict.items():
+#             query.args[key] = value
 
-        result = requests.get(query)
-        return result.text
-
-
-class LayerQuery(WFSQuery):
-
-    def __init__(self, layer_name, index_field=None, index=None, count=None, data_format='csv'):
-
-        self._index_field = index_field
-        self._data_format = data_format
-
-        query_dict = {
-            "request": "GetFeature",
-            "typename": layer_name,
-            "outputFormat": data_format,
-        }
-
-        if index is not None:
-            query_dict['cql_filter'] = f'{index_field}={index}'
-
-        if count:
-            query_dict['count'] = count
-
-        super().__init__(**query_dict)
+#         result = requests.get(query)
+#         return result.text
 
 
-    def fetch_data(self, output_method=None):
+# class LayerQuery(WFSQuery):
 
-        raw_data = super().fetch_data()
+#     def __init__(self, layer_name, index_field=None, index=None, count=None, data_format='csv'):
 
-        if self._data_format == 'json':
+#         self._index_field = index_field
+#         self._data_format = data_format
 
-            # Convert the returned data into a DataFrame
-            data = json.loads(raw_data)
-            data = extract_json_records(data)
-#            data = DataFrame.from_records(data['features'], index='id')
-            data = DataFrame.from_records(data)
+#         query_dict = {
+#             "request": "GetFeature",
+#             "typename": layer_name,
+#             "outputFormat": data_format,
+#         }
 
-        else:
+#         if index is not None:
+#             query_dict['cql_filter'] = f'{index_field}={index}'
 
-            data = extract_csv_records(raw_data, index_field=self._index_field)
-        # Write to CSV
-#        data.to_csv('/tmp/output.csv')
+#         if count:
+#             query_dict['count'] = count
 
-        if output_method:
-
-            kwargs = {}
-            if output_method == 'to_json':
-
-                # Convert the data from to JSON
-                kwargs['orient'] = 'records'
-
-            return getattr(data, output_method)(**kwargs)
-
-        else:
-            return data
+#         super().__init__(**query_dict)
 
 
-def extract_json_records(data):
-#    with open('/tmp/in.json', 'w', encoding='utf-8') as writer:
-#        writer.write(f'TYPE: {type(data)}\n\n{data}')
+#     def fetch_data(self, output_method=None):
 
-    # Extracts real records from complex data structure
-    if type(data) is str: 
-        data = json.loads(data)
+#         raw_data = super().fetch_data()
 
-    if type(data) is dict and 'features' in data:
-        data = data['features']
+#         if self._data_format == 'json':
 
-    if type(data) is list and len(data) > 0 and 'properties' in data[0]:
-        data = [_['properties'] for _ in data]
+#             # Convert the returned data into a DataFrame
+#             data = json.loads(raw_data)
+#             data = extract_json_records(data)
+# #            data = DataFrame.from_records(data['features'], index='id')
+#             data = DataFrame.from_records(data)
 
-    return data
+#         else:
+
+#             data = extract_csv_records(raw_data, index_field=self._index_field)
+#         # Write to CSV
+# #        data.to_csv('/tmp/output.csv')
+
+#         if output_method:
+
+#             kwargs = {}
+#             if output_method == 'to_json':
+
+#                 # Convert the data from to JSON
+#                 kwargs['orient'] = 'records'
+
+#             return getattr(data, output_method)(**kwargs)
+
+#         else:
+#             return data
+
+
+# def extract_json_records(data):
+# #    with open('/tmp/in.json', 'w', encoding='utf-8') as writer:
+# #        writer.write(f'TYPE: {type(data)}\n\n{data}')
+
+#     # Extracts real records from complex data structure
+#     if type(data) is str: 
+#         data = json.loads(data)
+
+#     if type(data) is dict and 'features' in data:
+#         data = data['features']
+
+#     if type(data) is list and len(data) > 0 and 'properties' in data[0]:
+#         data = [_['properties'] for _ in data]
+
+#     return data
 
 
 

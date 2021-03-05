@@ -36,12 +36,22 @@ class SQLManager(object):
         "data_policy_licence IN {data_policy_licence} AND ")
 
 
-    def _get_as_list(self, qdict, key):
-        value = qdict.getlist(key)
-        if len(value) == 1 and ',' in value[0]:
-            return value[0].split(',')
+    def _get_as_list(self, qdict, key, default=None):
+        "Parses both: x=1&x=2 and x=1,2 params in query string."
+        items = qdict.getlist(key, [])
+        resp = set()
 
-        return value
+        for item in items:
+            for _ in item.split(','):
+                resp.add(_)
+
+        if not resp: return default or []
+        return sorted(list(resp))
+
+#        value = qdict.getlist(key)
+#        if len(value) == 1 and ',' in value[0]:
+#            return value[0].split(',')
+#        return value
 
 
     def _map_value(self, name, value, mapper, as_array=False):
@@ -106,7 +116,6 @@ class SQLManager(object):
         else:
             year = d['year'] = self._get_as_list(qdict, 'year')[0]
             months = self._get_as_list(qdict, 'month')
-            months.sort()
 
             # Set defaults for days and hours
             days = None
@@ -115,11 +124,9 @@ class SQLManager(object):
             # Overwrite days and hours if relevant to the query
             if qdict['frequency'] in ('daily', 'sub_daily'):
                 days = self._get_as_list(qdict, 'day')
-                days.sort()
 
             if qdict['frequency'] == 'sub_daily':
                 hours = self._get_as_list(qdict, 'hour') or [f'{_:02d}' for _ in range(24)]
-                hours.sort()
 
             time_condition = self._get_time_condition([year], months, days, hours)
 
@@ -144,13 +151,13 @@ class SQLManager(object):
 
         for x in itertools.product(*time_iterators):
             # Use try/except to ignore any invalid time combinations
-            if 1: #try:
+            try:
                 tm = datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H')
                 #tm_with_tz = tm.astimezone(UTC)  # <-- did not work with python3.6 datetime
                 tm_with_tz = f'{tm}+00:00'
                 all_times.append(tm_with_tz)
                 #datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
-            else: #except Exception as err:
+            except Exception as err:
                 pass
 
         # Check if any times found
