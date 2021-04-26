@@ -39,9 +39,12 @@ class SQLManager(object):
     def _get_as_list(self, qdict, key, default=None):
         "Parses both: x=1&x=2 and x=1,2 params in query string."
         items = qdict.getlist(key, [])
+        
         resp = set()
 
+        log.warning(f'Wanting to split: {items}')
         for item in items:
+            log.warning(f'Splitting items to list: {item}')
             for _ in item.split(','):
                 resp.add(_)
 
@@ -128,13 +131,55 @@ class SQLManager(object):
             if qdict['frequency'] == 'sub_daily':
                 hours = self._get_as_list(qdict, 'hour') or [f'{_:02d}' for _ in range(24)]
 
-            time_condition = self._get_time_condition([year], months, days, hours)
+            time_condition = self._get_time_condition([year], months, days, frequency=qdict['frequency'])
 
         return (tmpl + time_condition).format(**d)
 
+    def _get_time_condition(self, years, months, days=None, frequency=None):
+        """
+        Generate and return a time condition SQL string. This matches at the level of:
+          - month: for monthly data
+          - day:   for daily/sub-daily data
+        """
+        if not frequency or frequency not in ('monthly', 'daily', 'sub_daily'):
+            raise Exception(f'Frequency must be set in time condition') 
 
-    def _get_time_condition(self, years, months, days=None, hours=None):
-        "date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
+        if not days:
+            days = ['01']
+
+        time_iterators = [years, months, days]
+        dt_format = '%Y-%m-%d'
+
+        all_times = []
+        
+        log.warning(f'Generating times from: {time_iterators}')
+        for x in itertools.product(*time_iterators):
+            # Use try/except to ignore any invalid time combinations
+            try:
+                #tm = datetime.datetime.strptime('-'.join(x))
+                #all_times.append(tm.strftime(dt_format))
+                all_times.append('-'.join(x))
+            except Exception as err:
+                pass
+
+        # Check if any times found
+        if not all_times:
+            raise Exception('Could not generate any valid date/time values from the parameters provided.')
+
+        all_times_string = ', '.join(["'{}'".format(x) for x in all_times])
+
+        if frequency == 'monthly':
+            time_condition = f"date_trunc('month', date_time) in ({all_times_string});"
+        else:
+            time_condition = f"date in ({all_times_string});"
+
+        return time_condition
+
+    def OLD_get_time_condition(self, years, months, days=None, hours=None):
+        """
+        Uses `date_trunc` to truncate date times, e.g.:
+        date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
+        """
 
         # Define period
         if days is None:

@@ -12,6 +12,8 @@ import zipfile
 import os
 import io
 import random
+import time
+import uuid
 from dateutil import parser
 
 import pandas as pd
@@ -34,11 +36,20 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 
 
+def log_time(msg):
+    now = time.time()
+    log.warn(f'[TIMER] | {msg} | {now:.3f}')
+
+
 class SelectView(View):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         #self._output_format = None
+        self._set_reqid()
+
+    def _set_reqid(self):
+        self._reqid = uuid.uuid4() 
 
 #    @property
 #    def output_format(self):
@@ -48,8 +59,9 @@ class SelectView(View):
         log.warn(f'QUERY STRING: {request.GET}')
         log.warn(f'Query string: {self.request.GET.urlencode()}')
 
+        log_time(f'{self._reqid}::RECEIVED_QUERY')
         try:
-            qm = QueryManager()
+            qm = QueryManager(self._reqid)
             data, data_policy_text = qm.run_query(request.GET)
         except Exception as exc:
 
@@ -65,6 +77,8 @@ class SelectView(View):
         return self._build_response(request, data, data_policy_text, compress=compress)
 
     def _build_response(self, request, data, data_policy_text='', compress=True):
+        log_time(f'{self._reqid}::START_BUILD_RESPONSE')
+
         data = data.to_csv(index=False)
 
         # Check valid combination of arguments
@@ -89,6 +103,8 @@ class SelectView(View):
         content_disposition = f'attachment; filename="{zip_name}"'
         response["Content-Disposition"] = content_disposition
 
+        log_time(f'{self._reqid}::END_BUILD_RESPONSE')
+
         return response
 
     def _get_zipped_response(self, file_pairs):
@@ -110,7 +126,8 @@ class SelectView(View):
 # noinspection SqlDialectInspection
 class QueryManager(object):
 
-    def __init__(self, conn_str=settings.LOCAL_CONN_STR):
+    def __init__(self, reqid, conn_str=settings.LOCAL_CONN_STR):
+        self._reqid = reqid
         self._conn = psycopg2.connect(conn_str)
 
     def _get_data_policy_text(self, results):
@@ -136,6 +153,8 @@ class QueryManager(object):
 
         sql_manager = SQLManager()
 
+        log_time(f'{self._reqid}::START_SQL')
+ 
         for sql_query in [sql_manager._generate_queries(kwargs)]:
             log.warn(f'RUNNING SQL: {sql_query}')
 
@@ -148,6 +167,9 @@ class QueryManager(object):
 
             dfs.append(df)
 
+        log_time(f'{self._reqid}::END_SQL')
+
+
         all_columns = ['observation_id', 'data_policy_licence', 'date_time', 'date_time_meaning', 
                        'observation_duration', 'longitude', 'latitude', 'report_type', 
                        'height_above_surface', 'observed_variable', 'units', 'observation_value', 
@@ -158,6 +180,8 @@ class QueryManager(object):
                                   'latitude', 'height_above_surface', 'observed_variable', 'units',
                                   'observation_value', 'value_significance', 'primary_station_id',
                                   'station_name', 'quality_flag', 'source_id']
+
+        log_time(f'{self._reqid}::START_MODIFY_DATAFRAMES')
 
         if not dfs:
             # If no data has been found (or no valid tables for date range)
@@ -178,15 +202,23 @@ class QueryManager(object):
             # Only drop "location" column extended metadata required
             df = df.drop(columns=['location'])
 
+        log_time(f'{self._reqid}::END_MODIFY_DATAFRAMES')
+
         # Get data policy text
+        log_time(f'{self._reqid}::START_DATA_POLICY')
         data_policy_text = self._get_data_policy_text(df)
+        log_time(f'{self._reqid}::END_DATA_POLICY')
+
 
         # If source_id exists then drop it before returning
 #        source_id = 'source_id'
 #        if source_id in df: 
 #            df.drop(columns=[source_id], inplace=True)
  
+        log_time(f'{self._reqid}::START_MAP_VALUES')
         self._map_values(df)
+        log_time(f'{self._reqid}::END_MAP_VALUES')
+
         # df.to_csv('out.csv', sep=',', index=False, float_format='%.3f',
         #           date_format='%Y-%m-%d %H:%M:%S%z')
         return df, data_policy_text
