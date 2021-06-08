@@ -162,7 +162,7 @@ class QueryManager(object):
                 df = pd.read_sql(sql_query, self._conn)
                 log.warn(f'SUCCESS: Extracted a DataFrame of length: {len(df)}')
             except Exception:
-                log.warn(f'FAILED: Error when extracting data!')
+                log.warn(f'FAILED: Error when extracting data! - query: {sql_query}')
                 continue
 
             dfs.append(df)

@@ -104,11 +104,14 @@ class SQLManager(object):
 
         d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
 
-        if qdict.get('data_quality', None) == 'quality_controlled': 
-            # Only include quality flag if set to QC'd data only
-            d['quality_flag'] = '0'
-            tmpl += "quality_flag = {quality_flag} AND "
+#        if qdict.get('data_quality', None) == 'quality_controlled': 
+#            # Only include quality flag if set to QC'd data only
+#            d['quality_flag'] = '0'
+#            tmpl += "quality_flag = {quality_flag} AND "
 
+        d['quality_flag'] = self._map_value('data_quality', self._get_as_list(qdict, 'data_quality'),
+                                     {"passed": "0", "failed": "1"},
+                                     as_array=True)
 
         # If the request includes the "time" parameter then ignore other temporal parameters
         if qdict.get('time'):
@@ -172,46 +175,6 @@ class SQLManager(object):
             time_condition = f"date_trunc('month', date_time) in ({all_times_string});"
         else:
             time_condition = f"date in ({all_times_string});"
-
-        return time_condition
-
-    def OLD_get_time_condition(self, years, months, days=None, hours=None):
-        """
-        Uses `date_trunc` to truncate date times, e.g.:
-        date_trunc('month', date_time) = TIMESTAMP '{year}-{month}-01 00:00:00';"
-        """
-
-        # Define period
-        if days is None:
-            period = 'month'
-            time_iterators = [years, months, ['01'], ['00']]
-        elif hours is None:
-            period = 'day'
-            time_iterators = [years, months, days, ['00']]
-        else:
-            period = 'hour'
-            time_iterators = [years, months, days, hours]
-
-        all_times = []
-
-        for x in itertools.product(*time_iterators):
-            # Use try/except to ignore any invalid time combinations
-            try:
-                tm = datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H')
-                #tm_with_tz = tm.astimezone(UTC)  # <-- did not work with python3.6 datetime
-                tm_with_tz = f'{tm}+00:00'
-                all_times.append(tm_with_tz)
-                #datetime.datetime.strptime('{}-{}-{} {}'.format(*x), '%Y-%m-%d %H').astimezone(UTC))
-            except Exception as err:
-                pass
-
-        # Check if any times found
-        if not all_times:
-            raise Exception('Could not generate any valid date/time values from the parameters provided.')
-
-        time_condition = "date_trunc('{}', date_time) in ({});".format(period, 
-                                ', '.join(["'{}'::timestamptz".format(x) for x in all_times])
-                                )
 
         return time_condition
 

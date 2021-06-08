@@ -48,8 +48,8 @@ wfs_mappings = {
     "data_quality": {
         "target": "quality_flag",
         "fields": {
-            "quality_controlled": "0",
-            "all_data": "1"
+            "passed": "0",
+            "failed": "1"
         },
         "labels": '__standard__'
     },
