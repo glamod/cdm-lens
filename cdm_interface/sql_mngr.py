@@ -72,7 +72,7 @@ class SQLManager(object):
         # PREVIOUSLY:  return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
         return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
 
-    def _get_data_policy_licence(self, value):
+    def OLD__get_data_policy_licence(self, value):
         """Special treatment to map single value to list of values based on:
         - non_commercial --> '(0,1)'
         - open (i.e. for any/commercial use) --> '(0)'
@@ -102,7 +102,11 @@ class SQLManager(object):
                                      wfs_mappings['variable']['fields'],
                                      as_array=True)
 
-        d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
+#        d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
+        d['data_policy_licence'] = self._map_value('intended_use', self._get_as_list(qdict, 'intended_use'),
+                                     {"open": "0", "non_commercial": "1"},
+                                     as_array=True)
+
 
 #        if qdict.get('data_quality', None) == 'quality_controlled': 
 #            # Only include quality flag if set to QC'd data only
