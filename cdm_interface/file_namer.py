@@ -1,11 +1,14 @@
 import os
 import random
 
+from cdm_interface.data_versions import validate_data_version
+
 
 class OutputFileNamer:
 
-    def __init__(self, req):
-        self._hash = self._get_hash()
+    def __init__(self, data_version, req):
+        data_version = validate_data_version(data_version)
+        self._suffix = self._get_suffix(data_version)
         self._build(req)
 
     def _build(self, req):
@@ -47,16 +50,16 @@ class OutputFileNamer:
         return sorted(list(resp)) 
 
     def get_csv_name(self):
-        return f'{self._base}_csv-obs_{self._hash}.csv'
+        return f'{self._base}_csv-obs_{self._suffix}.csv'
 
     def get_policy_name(self):
-        return f'{self._base}_data-policy_{self._hash}.txt'
+        return f'{self._base}_data-policy_{self._suffix}.txt'
 
     def get_zip_name(self):
-        return f'{self._base}_{self._hash}.zip'
+        return f'{self._base}_{self._suffix}.zip'
 
-    def _get_hash(self):
-        return ''.join([str(random.randint(0, 9)) for _ in range(8)])
+    def _get_suffix(self, data_version):
+        return ''.join([str(random.randint(0, 9)) for _ in range(8)]) + "_" + data_version
 
 
 

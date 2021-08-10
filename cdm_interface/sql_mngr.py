@@ -19,6 +19,7 @@ import re
 
 from cdm_interface.wfs_mappings import wfs_mappings
 from cdm_interface.utils import decompose_datetime
+from cdm_interface.data_versions import validate_data_version, DATA_VERSIONS
 
 import logging
 logging.basicConfig()
@@ -26,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 #UTC = datetime.timezone.utc
-SCHEMA = 'lite_2_0'
+#SCHEMA = 'lite_2_0'
 
 
 class SQLManager(object):
@@ -35,6 +36,9 @@ class SQLManager(object):
         "observed_variable IN {observed_variable} AND "
         "data_policy_licence IN {data_policy_licence} AND ")
 
+
+    def __init__(self, data_version):
+        self._data_version = validate_data_version(data_version)
 
     def _get_as_list(self, qdict, key, default=None):
         "Parses both: x=1&x=2 and x=1,2 params in query string."
@@ -87,7 +91,7 @@ class SQLManager(object):
 
         tmpl = self.tmpl
 
-        d = {'SCHEMA': SCHEMA}
+        d = {'SCHEMA': DATA_VERSIONS[self._data_version]}
         d['domain'] = qdict['domain']
 
         d['report_type'] = self._map_value('frequency', qdict['frequency'],

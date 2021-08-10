@@ -30,6 +30,7 @@ from cdm_interface.utils import extract_csv_records
 from cdm_interface.sql_mngr import SQLManager
 from cdm_interface.data_policies import get_data_policies
 from cdm_interface.file_namer import OutputFileNamer
+from cdm_interface.data_versions import validate_data_version
 
 import logging
 logging.basicConfig()
@@ -55,13 +56,17 @@ class SelectView(View):
 #    def output_format(self):
 #        return "csv"
 
-    def get(self, request):
+    def get(self, request, data_version):
+
+     
         log.warn(f'QUERY STRING: {request.GET}')
         log.warn(f'Query string: {self.request.GET.urlencode()}')
 
+        data_version = validate_data_version(data_version)
+
         log_time(f'{self._reqid}::RECEIVED_QUERY')
         try:
-            qm = QueryManager(self._reqid)
+            qm = QueryManager(data_version, self._reqid)
             data, data_policy_text = qm.run_query(request.GET)
         except Exception as exc:
 
@@ -74,9 +79,9 @@ class SelectView(View):
 
         log.warn(f'LENGTH: {len(data)}')
         compress = json.loads(request.GET.get("compress", "true"))
-        return self._build_response(request, data, data_policy_text, compress=compress)
+        return self._build_response(request, data, data_version, data_policy_text, compress=compress)
 
-    def _build_response(self, request, data, data_policy_text='', compress=True):
+    def _build_response(self, request, data, data_version, data_policy_text='', compress=True):
         log_time(f'{self._reqid}::START_BUILD_RESPONSE')
 
         data = data.to_csv(index=False)
@@ -85,7 +90,7 @@ class SelectView(View):
         if data_policy_text and not compress:
             return HttpResponse('Cannot return a data policy info to uncompressed response.')
 
-        file_namer = OutputFileNamer(request.GET)
+        file_namer = OutputFileNamer(data_version, request.GET)
         zip_name = file_namer.get_zip_name()
 
         if compress: 
@@ -126,7 +131,8 @@ class SelectView(View):
 # noinspection SqlDialectInspection
 class QueryManager(object):
 
-    def __init__(self, reqid, conn_str=settings.LOCAL_CONN_STR):
+    def __init__(self, data_version, reqid, conn_str=settings.LOCAL_CONN_STR):
+        self._data_version = data_version
         self._reqid = reqid
         self._conn = psycopg2.connect(conn_str)
 
@@ -151,7 +157,7 @@ class QueryManager(object):
 
         dfs = []
 
-        sql_manager = SQLManager()
+        sql_manager = SQLManager(self._data_version)
 
         log_time(f'{self._reqid}::START_SQL')
  
@@ -539,16 +545,18 @@ def _get_mapper(code_table, index_field, desc_field, processor=None, conn=None):
 
 class ConstraintsView(View):
 
-    def get(self, request, domain):
+    def get(self, request, data_version, domain):
 
         log.warn(f'Requested constraints for: {domain}')
         domain = domain.lower()
+
+        data_version = validate_data_version(data_version) 
 
         if domain not in ('land', 'marine'):
             return HttpResponse('Domain must be one of: "land", "marine".', status=400)
 
         content_type = "application/json"
-        response_file_path = self._get_constraints_path(domain)
+        response_file_path = self._get_constraints_path(domain, data_version)
         response_file_name = os.path.basename(response_file_path)
 
         response = HttpResponse(open(response_file_path).read(), content_type=content_type)
@@ -557,8 +565,8 @@ class ConstraintsView(View):
 
         return response
 
-    def _get_constraints_path(self, domain):
-        return f'{settings.STATIC_ROOT}/constraints/constraints-{domain}.json'
+    def _get_constraints_path(self, domain, data_version):
+        return f'{settings.STATIC_ROOT}/constraints/constraints-{domain}-{data_version}.json'
 
 
 # class LayerView(QueryView):
