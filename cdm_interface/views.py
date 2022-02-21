@@ -205,8 +205,9 @@ class QueryManager(object):
             df = df[basic_metadata_columns]
 
         else:
-            # Only drop "location" column extended metadata required
-            df = df.drop(columns=['location'])
+            # Only drop "location" and "date" columns when extended metadata required
+            # These are only used internally
+            df = df.drop(columns=['location', 'date'])
 
         log_time(f'{self._reqid}::END_MODIFY_DATAFRAMES')
 

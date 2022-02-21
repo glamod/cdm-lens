@@ -76,16 +76,23 @@ class SQLManager(object):
         # PREVIOUSLY:  return f"ST_Polygon('LINESTRING({w} {s}, {w} {n}, {e} {n}, {e} {s}, {w} {s})'::geometry, {srid})"
         return f"ST_MakeEnvelope({w}, {s}, {e}, {n}, {srid})"
 
-    def OLD__get_data_policy_licence(self, value):
-        """Special treatment to map single value to list of values based on:
-        - non_commercial --> '(0,1)'
-        - open (i.e. for any/commercial use) --> '(0)'
+    def _get_data_policy_licence(self, qdict):
         """
-        if value == 'non_commercial':
-            return '(0,1)'
+        Special treatment to map single value to list of values based on:
+        - input: non_commercial --> "(1)"
+        - input: open (i.e. including commercial) --> "(0,5)"
+        - input: open,non_commercial --> "(0,1,5)"
+        """
+        value = self._get_as_list(qdict, "intended_use") 
+        resp = set()
 
-        # Default is only open/commercial data
-        return '(0)'
+        if "open" in value:
+            resp.update(["0", "5"])
+
+        if "non_commercial" in value:
+            resp.add("1")
+
+        return "(" + ",".join([i for i in sorted(resp)]) + ")"
 
     def _generate_queries(self, qdict):
 
@@ -106,10 +113,10 @@ class SQLManager(object):
                                      wfs_mappings['variable']['fields'],
                                      as_array=True)
 
-#        d['data_policy_licence'] = self._get_data_policy_licence(qdict['intended_use'])
-        d['data_policy_licence'] = self._map_value('intended_use', self._get_as_list(qdict, 'intended_use'),
-                                     {"open": "0", "non_commercial": "1"},
-                                     as_array=True)
+        d['data_policy_licence'] = self._get_data_policy_licence(qdict) #['intended_use'])
+#        d['data_policy_licence'] = self._map_value('intended_use', self._get_as_list(qdict, 'intended_use'),
+#                                     {"open": "0", "non_commercial": "1"},
+#                                     as_array=True)
 
 
 #        if qdict.get('data_quality', None) == 'quality_controlled': 
