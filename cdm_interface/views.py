@@ -200,6 +200,7 @@ class QueryManager(object):
         else:
             df = pd.concat(dfs)
 
+        log_time(f'Columns in dataframe: {df.columns}')
         # Filter the columns if only basic metadata requested
         if kwargs.get('column_selection', None) == 'basic_metadata':
             df = df[basic_metadata_columns]
