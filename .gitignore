@@ -267,3 +267,6 @@ fabric.properties
 .history
 
 # End of https://www.gitignore.io/api/python,django,pycharm,visualstudiocode
+#
+cdm_interface/try.sh
+cdm_interface/outputs
