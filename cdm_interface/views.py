@@ -424,7 +424,7 @@ def _get_mapper(code_table, index_field, desc_field, processor=None, conn=None):
         conn_str = settings.LOCAL_CONN_STR
         conn = psycopg2.connect(conn_str)
 
-    sql_query = f"SELECT * FROM {code_table};"
+    sql_query = f"SELECT * FROM {settings.FULL_CDM_SCHEMA}{code_table};"
     df = pd.read_sql(sql_query, conn)
 
     mapper = {}
