@@ -66,3 +66,5 @@ STATIC_URL = '/static/'
 # Lens settings
 WFS_URL = ''
 LOCAL_CONN_STR = ''
+FULL_CDM_SCHEMA = ''
+
